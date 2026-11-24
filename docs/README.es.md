@@ -3,6 +3,8 @@
 [English](../README.md) | [한국어](README.ko.md) | [日本語](README.ja.md) | [中文 (简体)](README.zh.md) | **Español** | [Deutsch](README.de.md) | [Français](README.fr.md)
 
 **Controlador de panel táctil de precisión (Precision Touchpad) con latencia ultrabaja para gaming y productividad en Windows 11.**
+> *Hecho porque los ajustes predeterminados del panel táctil de Windows eran demasiado incómodos — y sí, también para jugar con el panel táctil.*
+
 Servicio Win32 puro en segundo plano (`TouchpadGood.exe`) + Configuración Fluent Design (`TouchpadGoodSettings.exe`) + Instalador todo en uno (`TouchpadGoodSetup.exe`).
 
 ---

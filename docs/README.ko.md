@@ -3,6 +3,8 @@
 [English](../README.md) | **한국어** | [日本語](README.ja.md) | [中文 (简体)](README.zh.md) | [Español](README.es.md) | [Deutsch](README.de.md) | [Français](README.fr.md)
 
 **Windows 11 초저지연 게이밍 · 작업용 정밀 터치패드(Precision Touchpad) 커스텀 드라이버**
+> *Windows 기본 터치패드 설정이 너무 불편해서 만들었고, 터치패드로 게임하려고 만든 것도 있습니다.*
+
 순수 Win32 무트레이 백그라운드 드라이버(`TouchpadGood.exe`) + Windows 11 Fluent Design 설정 앱(`TouchpadGoodSettings.exe`) + 통합 설치 프로그램(`TouchpadGoodSetup.exe`)
 
 ---

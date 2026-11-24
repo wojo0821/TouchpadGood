@@ -3,6 +3,8 @@
 [English](../README.md) | [한국어](README.ko.md) | [日本語](README.ja.md) | [中文 (简体)](README.zh.md) | [Español](README.es.md) | [Deutsch](README.de.md) | **Français**
 
 **Pilote Precision Touchpad ultra-faible latence pour le gaming et la productivité sous Windows 11.**
+> *Créé parce que les paramètres par défaut du pavé tactile Windows étaient bien trop peu pratiques — et oui, aussi pour jouer au pavé tactile.*
+
 Service Win32 pur en arrière-plan (`TouchpadGood.exe`) + Paramètres Fluent Design (`TouchpadGoodSettings.exe`) + Installateur tout-en-un (`TouchpadGoodSetup.exe`).
 
 ---

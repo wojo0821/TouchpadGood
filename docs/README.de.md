@@ -3,6 +3,8 @@
 [English](../README.md) | [한국어](README.ko.md) | [日本語](README.ja.md) | [中文 (简体)](README.zh.md) | [Español](README.es.md) | **Deutsch** | [Français](README.fr.md)
 
 **Ultra-Low-Latency Gaming- & Produktivitäts-Precision-Touchpad-Treiber für Windows 11.**
+> *Entstanden, weil die Windows-Standard-Touchpad-Einstellungen viel zu unpraktisch waren — und ja, auch um mit dem Touchpad zu zocken.*
+
 Reiner Win32-Hintergrunddienst (`TouchpadGood.exe`) + Windows 11 Fluent Design Einstellungen (`TouchpadGoodSettings.exe`) + All-in-One Installer (`TouchpadGoodSetup.exe`).
 
 ---

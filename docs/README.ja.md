@@ -3,6 +3,8 @@
 [English](../README.md) | [한국어](README.ko.md) | **日本語** | [中文 (简体)](README.zh.md) | [Español](README.es.md) | [Deutsch](README.de.md) | [Français](README.fr.md)
 
 **Windows 11向け 超低遅延ゲーミング＆作業用 高精度タッチパッドカスタムドライバー**
+> *Windowsの標準タッチパッド設定があまりにも不便だったのと、タッチパッドでゲームをするために作りました。*
+
 純粋Win32常駐デーモン (`TouchpadGood.exe`) + Windows 11 Fluent Design 設定UI (`TouchpadGoodSettings.exe`) + オールインワンインストーラー (`TouchpadGoodSetup.exe`)
 
 ---

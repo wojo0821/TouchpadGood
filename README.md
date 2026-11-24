@@ -3,6 +3,8 @@
 **English** | [한국어](docs/README.ko.md) | [日本語](docs/README.ja.md) | [中文 (简体)](docs/README.zh.md) | [Español](docs/README.es.md) | [Deutsch](docs/README.de.md) | [Français](docs/README.fr.md)
 
 **Ultra-low-latency gaming & productivity Precision Touchpad driver for Windows 11.**
+> *Made because default Windows touchpad settings were way too inconvenient — and yes, I also built this to play games on a touchpad.*
+
 Pure Win32 headless daemon (`TouchpadGood.exe`) + Windows 11 Fluent Design Settings UI (`TouchpadGoodSettings.exe`) + All-in-One Installer (`TouchpadGoodSetup.exe`).
 
 ---
