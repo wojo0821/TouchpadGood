@@ -156,6 +156,40 @@ namespace TouchpadGood
         }
     }
 
+    internal sealed class FluentStatusDot : Control
+    {
+        private Color _dotColor;
+        private readonly float _scale;
+
+        public Color DotColor
+        {
+            get { return _dotColor; }
+            set { if (_dotColor != value) { _dotColor = value; Invalidate(); } }
+        }
+
+        public FluentStatusDot(Color backColor, Color dotColor, float scale)
+        {
+            _dotColor = dotColor;
+            _scale = scale;
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+            BackColor = backColor;
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            var g = e.Graphics;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+            float d = 10.0f * _scale;
+            float x = (Width - d) * 0.5f;
+            float y = (Height - d) * 0.5f;
+            using (var br = new SolidBrush(_dotColor))
+            {
+                g.FillEllipse(br, x, y, d, d);
+            }
+        }
+    }
+
     internal sealed class FluentCard : Panel
     {
         private readonly FluentTheme _t;

@@ -34,15 +34,30 @@ namespace TouchpadGood
                 try { SetProcessDPIAware(); } catch { }
             }
 
-            bool createdNew;
-            using (var mutex = new Mutex(true, "TouchpadGood_Settings_SingleInstance", out createdNew))
-            {
-                if (!createdNew)
-                {
-                    PostMessage(new IntPtr(0xffff), WM_SHOW_SETTINGS, IntPtr.Zero, IntPtr.Zero);
-                    return;
-                }
+            Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+            Application.ThreadException += (s, ev) => AppMeta.LogCrash("TouchpadGoodSettings", ev.Exception);
+            AppDomain.CurrentDomain.UnhandledException += (s, ev) => AppMeta.LogCrash("TouchpadGoodSettings", ev.ExceptionObject as Exception);
 
+            Mutex mutex = null;
+            bool createdNew = false;
+            try
+            {
+                mutex = new Mutex(true, "TouchpadGood_Settings_SingleInstance", out createdNew);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                createdNew = false;
+            }
+
+            if (!createdNew || mutex == null)
+            {
+                PostMessage(new IntPtr(0xffff), WM_SHOW_SETTINGS, IntPtr.Zero, IntPtr.Zero);
+                try { if (mutex != null) mutex.Close(); } catch { }
+                return;
+            }
+
+            using (mutex)
+            {
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
                 Application.Run(new SettingsForm());

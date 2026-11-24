@@ -34,6 +34,7 @@ namespace TouchpadGood
         private const int PBT_APMRESUMESUSPEND = 0x0007;
         private const int PBT_APMRESUMEAUTOMATIC = 0x0012;
         private const int DBT_DEVNODES_CHANGED = 0x0007;
+        private const int WTS_SESSION_UNLOCK = 0x8;
         private const uint NOTIFY_FOR_THIS_SESSION = 0;
 
         private const int HOTKEY_TOGGLE_ID = 9001;
@@ -217,14 +218,30 @@ namespace TouchpadGood
                 }
             }
 
+            AppDomain.CurrentDomain.UnhandledException += (s, ev) =>
+            {
+                try { if (_engine != null) _engine.ForceReleaseAll(); } catch { }
+                AppMeta.LogCrash("TouchpadGood", ev.ExceptionObject as Exception);
+            };
+
             Mutex mutex = null;
             bool createdNew = false;
             int tries = waitPrev ? 35 : 1;
             for (int i = 0; i < tries; i++)
             {
-                mutex = new Mutex(true, "TouchpadGood_SingleInstance_Mutex", out createdNew);
+                try
+                {
+                    mutex = new Mutex(true, "TouchpadGood_SingleInstance_Mutex", out createdNew);
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    // Already running as elevated Administrator
+                    createdNew = false;
+                    mutex = null;
+                    if (!waitPrev) return;
+                }
                 if (createdNew) break;
-                try { mutex.Close(); } catch { }
+                try { if (mutex != null) mutex.Close(); } catch { }
                 mutex = null;
                 if (waitPrev) Thread.Sleep(100);
             }
@@ -467,6 +484,8 @@ namespace TouchpadGood
             if (msg == WM_WTSSESSION_CHANGE)
             {
                 if (_engine != null) _engine.ForceReleaseAll();
+                if (wParam.ToInt32() == WTS_SESSION_UNLOCK && _config != null && _config.Enabled)
+                    WindowsTouchpadSync.Apply(_config);
                 return IntPtr.Zero;
             }
             if (msg == WM_DEVICECHANGE && wParam.ToInt32() == DBT_DEVNODES_CHANGED)
@@ -477,6 +496,7 @@ namespace TouchpadGood
             }
             if (msg == WM_ENDSESSION)
             {
+                _restoreOnExit = false;
                 if (_engine != null) _engine.ForceReleaseAll();
                 PostQuitMessage(0);
                 return IntPtr.Zero;

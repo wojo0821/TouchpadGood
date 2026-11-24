@@ -30,6 +30,7 @@ Pure Win32 headless daemon (`TouchpadGood.exe`) + Windows 11 Fluent Design Setti
   - Follows Windows 11 Dark / Light system theme automatically.
   - Custom Fluent scrollbar & custom borderless Fluent dropdowns unified with the canvas palette.
   - Live language switching without restart: **한국어, English, 日本語, 中文 (简体), Español, Deutsch, Français**.
+  - Built-in **Check for Updates & 1-click Auto-Update** directly from GitHub (`TouchpadGoodSettings.exe`).
 
 ---
 

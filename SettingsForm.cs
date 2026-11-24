@@ -15,6 +15,7 @@ namespace TouchpadGood
         private const string DriverWindowClass = "TouchpadGood_HostClass";
         private const string TaskName = "TouchpadGood";
         private const string RunRegPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
+        private const uint MSGFLT_ALLOW = 1;
 
         private static readonly uint WM_DRIVER_RELOAD = RegisterWindowMessage("WM_TOUCHPADGOOD_RELOAD");
         private static readonly uint WM_DRIVER_STOP = RegisterWindowMessage("WM_TOUCHPADGOOD_STOP");
@@ -35,6 +36,9 @@ namespace TouchpadGood
             IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam,
             uint fuFlags, uint uTimeout, out IntPtr lpdwResult);
 
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool ChangeWindowMessageFilterEx(IntPtr hWnd, uint message, uint action, IntPtr pChangeFilterStruct);
+
         private readonly FluentTheme _t;
         private DriverConfig _config;
         private float _scale = 1.0f;
@@ -47,14 +51,14 @@ namespace TouchpadGood
         private FluentDropdown _cbLanguage;
 
         // Hero status card
-        private Label _lblStatusDot;
+        private FluentStatusDot _statusDot;
         private Label _lblStatusText;
         private Label _lblHeroSub;
         private FluentButton _btnAdmin;
         private FluentButton _btnToggleDriver;
 
         // Section titles
-        private Label _secCore, _secGestures, _secFps, _secTune;
+        private Label _secCore, _secGestures, _secFps, _secTune, _secAbout;
 
         // Core cards
         private Label _lblEnabledTitle, _lblEnabledSub;
@@ -89,6 +93,14 @@ namespace TouchpadGood
         private FluentSlider _slManualSpeed, _slStagger, _slClickHold;
         private Label _lblManualSpeedVal, _lblStaggerVal, _lblClickHoldVal;
 
+        // Update card
+        private Label _lblUpdateTitle, _lblUpdateSub;
+        private FluentButton _btnUpdate;
+        private bool _updateBusy;
+        private UpdateCheckResult _pendingUpdate;
+        private string _updateStateKey = "sub_update_idle";
+        private string _updateStateArg = AppMeta.Version;
+
         // Footer
         private Label _lblFooterInfo;
         private FluentButton _btnRestore, _btnReset;
@@ -102,6 +114,8 @@ namespace TouchpadGood
 
             using (var g = Graphics.FromHwnd(IntPtr.Zero))
                 _scale = g.DpiX / 96.0f;
+
+            try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
             DoubleBuffered = true;
             InitUi();
@@ -122,13 +136,28 @@ namespace TouchpadGood
 
         private static string DriverExePath
         {
-            get { return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "TouchpadGood.exe"); }
+            get
+            {
+                string local = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "TouchpadGood.exe");
+                if (File.Exists(local)) return local;
+                string installed = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "Programs", AppMeta.AppName, "TouchpadGood.exe");
+                if (File.Exists(installed)) return installed;
+                return local;
+            }
         }
 
         protected override void OnHandleCreated(EventArgs e)
         {
             base.OnHandleCreated(e);
             FluentTheme.ApplyWindowFrame(this.Handle, _t.IsDark, true);
+            try
+            {
+                ChangeWindowMessageFilterEx(this.Handle, (uint)SettingsProgram.WM_SHOW_SETTINGS, MSGFLT_ALLOW, IntPtr.Zero);
+                ChangeWindowMessageFilterEx(this.Handle, WM_DRIVER_CONFIG_CHANGED, MSGFLT_ALLOW, IntPtr.Zero);
+            }
+            catch { }
         }
 
         protected override void OnShown(EventArgs e)
@@ -185,16 +214,18 @@ namespace TouchpadGood
             ForeColor = _t.TextPrimary;
             Font = UiFont(9.0f, FontStyle.Regular);
 
-            int formW = 604;
-            int formH = 710;
-            ClientSize = new Size(S(formW), S(formH));
+            int formW = 620;
+            int desiredH = 716;
+            Rectangle work = Screen.FromPoint(Cursor.Position).WorkingArea;
+            int actualH = Math.Min(S(desiredH), Math.Max(S(460), work.Height - S(52)));
+            ClientSize = new Size(S(formW), actualH);
 
             // Fixed Bottom Footer Bar
-            int footerH = 54;
+            int footerH = S(54);
             var footer = new Panel
             {
-                Location = new Point(0, S(formH - footerH)),
-                Size = new Size(S(formW), S(footerH)),
+                Location = new Point(0, actualH - footerH),
+                Size = new Size(S(formW), footerH),
                 BackColor = _t.Card
             };
             footer.Paint += (s, e) =>
@@ -206,14 +237,15 @@ namespace TouchpadGood
             _lblFooterInfo = new Label
             {
                 Location = new Point(S(20), S(16)),
-                Size = new Size(S(338), S(22)),
+                Size = new Size(S(352), S(22)),
                 Font = UiFont(8.2f, FontStyle.Regular),
                 ForeColor = _t.TextSecondary,
-                BackColor = _t.Card
+                BackColor = _t.Card,
+                AutoEllipsis = true
             };
             _btnRestore = new FluentButton(_t, _scale, false)
             {
-                Location = new Point(S(366), S(12)),
+                Location = new Point(S(formW - 236), S(12)),
                 Size = new Size(S(108), S(30)),
                 Font = UiFont(8.5f, FontStyle.Regular),
                 BackColor = _t.Card
@@ -222,8 +254,8 @@ namespace TouchpadGood
 
             _btnReset = new FluentButton(_t, _scale, true)
             {
-                Location = new Point(S(482), S(12)),
-                Size = new Size(S(102), S(30)),
+                Location = new Point(S(formW - 120), S(12)),
+                Size = new Size(S(100), S(30)),
                 Font = UiFont(8.5f, FontStyle.Bold),
                 BackColor = _t.Card
             };
@@ -234,11 +266,11 @@ namespace TouchpadGood
             footer.Controls.Add(_btnReset);
             Controls.Add(footer);
 
-            // Custom Fluent Scrollable Body (unified canvas scrollbar, zero gray Win32 bar)
+            // Custom Fluent Scrollable Body
             var scrollBody = new FluentScrollPanel(_t, _scale)
             {
                 Location = new Point(0, 0),
-                Size = new Size(S(formW), S(formH - footerH))
+                Size = new Size(S(formW), actualH - footerH)
             };
             Controls.Add(scrollBody);
 
@@ -255,7 +287,8 @@ namespace TouchpadGood
                 Size = new Size(S(cardW - 146), S(32)),
                 Font = UiFont(15.5f, FontStyle.Bold),
                 ForeColor = _t.TextPrimary,
-                BackColor = _t.Canvas
+                BackColor = _t.Canvas,
+                AutoEllipsis = true
             };
             body.Controls.Add(_lblPageTitle);
 
@@ -282,54 +315,53 @@ namespace TouchpadGood
             body.Controls.Add(_cbLanguage);
             y += 40;
 
-            // Hero Status Card
+            // Hero Status Card (pixel-aligned vector status dot + full non-clipped subtitle)
             var hero = new FluentCard(_t, 8f * _scale)
             {
                 Location = new Point(S(pad), S(y)),
                 Size = new Size(S(cardW), S(68))
             };
-            _lblStatusDot = new Label
+            _statusDot = new FluentStatusDot(_t.Card, _t.Success, _scale)
             {
-                Text = "●",
-                Location = new Point(S(16), S(14)),
-                Size = new Size(S(18), S(20)),
-                Font = UiFont(10.5f, FontStyle.Bold),
-                ForeColor = _t.Success,
-                BackColor = _t.Card
+                Location = new Point(S(14), S(13)),
+                Size = new Size(S(16), S(22))
             };
             _lblStatusText = new Label
             {
                 Location = new Point(S(34), S(13)),
-                Size = new Size(S(cardW - 244), S(22)),
+                Size = new Size(S(cardW - 234), S(22)),
                 Font = UiFont(9.8f, FontStyle.Bold),
                 ForeColor = _t.TextPrimary,
-                BackColor = _t.Card
+                BackColor = _t.Card,
+                TextAlign = ContentAlignment.MiddleLeft,
+                AutoEllipsis = true
             };
             _lblHeroSub = new Label
             {
-                Location = new Point(S(34), S(37)),
-                Size = new Size(S(cardW - 240), S(18)),
+                Location = new Point(S(34), S(38)),
+                Size = new Size(S(cardW - 234), S(18)),
                 Font = UiFont(8.0f, FontStyle.Regular),
                 ForeColor = _t.TextSecondary,
-                BackColor = _t.Card
+                BackColor = _t.Card,
+                AutoEllipsis = true
             };
             _btnAdmin = new FluentButton(_t, _scale, false)
             {
-                Location = new Point(S(cardW - 204), S(19)),
-                Size = new Size(S(104), S(30)),
-                Font = UiFont(8.4f, FontStyle.Regular)
+                Location = new Point(S(cardW - 194), S(19)),
+                Size = new Size(S(100), S(30)),
+                Font = UiFont(8.3f, FontStyle.Regular)
             };
             _btnAdmin.Click += (s, e) => RestartDriverAsAdmin();
 
             _btnToggleDriver = new FluentButton(_t, _scale, false)
             {
-                Location = new Point(S(cardW - 92), S(19)),
-                Size = new Size(S(76), S(30)),
-                Font = UiFont(8.4f, FontStyle.Regular)
+                Location = new Point(S(cardW - 86), S(19)),
+                Size = new Size(S(70), S(30)),
+                Font = UiFont(8.3f, FontStyle.Regular)
             };
             _btnToggleDriver.Click += (s, e) => ToggleDriverProcess();
 
-            hero.Controls.Add(_lblStatusDot);
+            hero.Controls.Add(_statusDot);
             hero.Controls.Add(_lblStatusText);
             hero.Controls.Add(_lblHeroSub);
             hero.Controls.Add(_btnAdmin);
@@ -341,10 +373,7 @@ namespace TouchpadGood
             y = AddSectionTitle(body, pad, y, cardW, out _secCore);
             y = AddToggleCard(body, pad, y, cardW, out _lblEnabledTitle, out _lblEnabledSub, out _tgEnabled, (s, e) => ScheduleSave(true));
             y = AddToggleCard(body, pad, y, cardW, out _lblAccelTitle, out _lblAccelSub, out _tgDisableAccel, (s, e) => ScheduleSave(true));
-
-            // One-click Windows Auto-Configure Card
             y = AddActionCard(body, pad, y, cardW, out _lblWinOptTitle, out _lblWinOptSub, out _btnWinOpt, true, (s, e) => ApplyWindowsAutoOptimize());
-
             y = AddToggleCard(body, pad, y, cardW, out _lblAutoStartTitle, out _lblAutoStartSub, out _tgAutoStart, (s, e) =>
             {
                 if (!_isLoadingUi) ToggleAutoStartTask();
@@ -384,7 +413,8 @@ namespace TouchpadGood
                 Size = new Size(S(cardW - 120), S(20)),
                 Font = UiFont(9.3f, FontStyle.Regular),
                 ForeColor = _t.TextPrimary,
-                BackColor = _t.Card
+                BackColor = _t.Card,
+                AutoEllipsis = true
             };
             _lblAutoSpeedSub = new Label
             {
@@ -392,7 +422,8 @@ namespace TouchpadGood
                 Size = new Size(S(cardW - 120), S(16)),
                 Font = UiFont(8.0f, FontStyle.Regular),
                 ForeColor = _t.TextSecondary,
-                BackColor = _t.Card
+                BackColor = _t.Card,
+                AutoEllipsis = true
             };
             _tgAutoSpeed = new FluentToggle(_t, _scale)
             {
@@ -439,6 +470,11 @@ namespace TouchpadGood
 
             y = AddSliderCard(body, pad, y, cardW, 10, 50, out _lblStaggerTitle, out _lblStaggerSub, out _slStagger, out _lblStaggerVal);
             y = AddSliderCard(body, pad, y, cardW, 8, 40, out _lblHoldTitle, out _lblHoldSub, out _slClickHold, out _lblClickHoldVal);
+            y += 12;
+
+            // Section 5: Updates & About
+            y = AddSectionTitle(body, pad, y, cardW, out _secAbout);
+            y = AddActionCard(body, pad, y, cardW, out _lblUpdateTitle, out _lblUpdateSub, out _btnUpdate, false, (s, e) => OnUpdateButtonClick());
 
             scrollBody.SetContentHeight(S(y + 18));
         }
@@ -451,7 +487,8 @@ namespace TouchpadGood
                 Size = new Size(S(w), S(22)),
                 Font = UiFont(9.1f, FontStyle.Bold),
                 ForeColor = _t.TextPrimary,
-                BackColor = _t.Canvas
+                BackColor = _t.Canvas,
+                AutoEllipsis = true
             };
             parent.Controls.Add(lbl);
             return y + 26;
@@ -471,7 +508,8 @@ namespace TouchpadGood
                 Size = new Size(S(w - 124), S(20)),
                 Font = UiFont(9.3f, FontStyle.Regular),
                 ForeColor = _t.TextPrimary,
-                BackColor = _t.Card
+                BackColor = _t.Card,
+                AutoEllipsis = true
             };
             subLbl = new Label
             {
@@ -479,7 +517,8 @@ namespace TouchpadGood
                 Size = new Size(S(w - 124), S(16)),
                 Font = UiFont(7.9f, FontStyle.Regular),
                 ForeColor = _t.TextSecondary,
-                BackColor = _t.Card
+                BackColor = _t.Card,
+                AutoEllipsis = true
             };
             toggle = new FluentToggle(_t, _scale)
             {
@@ -508,7 +547,8 @@ namespace TouchpadGood
                 Size = new Size(S(w - 154), S(20)),
                 Font = UiFont(9.3f, FontStyle.Bold),
                 ForeColor = _t.TextPrimary,
-                BackColor = _t.Card
+                BackColor = _t.Card,
+                AutoEllipsis = true
             };
             subLbl = new Label
             {
@@ -516,13 +556,14 @@ namespace TouchpadGood
                 Size = new Size(S(w - 154), S(18)),
                 Font = UiFont(7.9f, FontStyle.Regular),
                 ForeColor = _t.TextSecondary,
-                BackColor = _t.Card
+                BackColor = _t.Card,
+                AutoEllipsis = true
             };
             btn = new FluentButton(_t, _scale, primary)
             {
                 Location = new Point(S(w - 134), S(15)),
                 Size = new Size(S(118), S(30)),
-                Font = UiFont(8.5f, FontStyle.Bold)
+                Font = UiFont(8.4f, FontStyle.Bold)
             };
             btn.Click += onClick;
             card.Controls.Add(titleLbl);
@@ -548,7 +589,8 @@ namespace TouchpadGood
                 Size = new Size(S(w - 32), S(20)),
                 Font = UiFont(9.4f, FontStyle.Bold),
                 ForeColor = _t.TextPrimary,
-                BackColor = _t.Card
+                BackColor = _t.Card,
+                AutoEllipsis = true
             };
             card.Controls.Add(cardTitleLbl);
 
@@ -565,10 +607,11 @@ namespace TouchpadGood
             lbl = new Label
             {
                 Location = new Point(S(16), S(y + 4)),
-                Size = new Size(S(180), S(20)),
+                Size = new Size(S(190), S(20)),
                 Font = UiFont(8.8f, FontStyle.Regular),
                 ForeColor = _t.TextSecondary,
-                BackColor = _t.Card
+                BackColor = _t.Card,
+                AutoEllipsis = true
             };
             var dd = new FluentDropdown(_t, _scale)
             {
@@ -596,7 +639,8 @@ namespace TouchpadGood
                 Size = new Size(S(w - 100), S(20)),
                 Font = UiFont(9.3f, FontStyle.Regular),
                 ForeColor = _t.TextPrimary,
-                BackColor = _t.Card
+                BackColor = _t.Card,
+                AutoEllipsis = true
             };
             valLbl = new Label
             {
@@ -613,7 +657,8 @@ namespace TouchpadGood
                 Size = new Size(S(w - 32), S(16)),
                 Font = UiFont(7.9f, FontStyle.Regular),
                 ForeColor = _t.TextSecondary,
-                BackColor = _t.Card
+                BackColor = _t.Card,
+                AutoEllipsis = true
             };
             slider = new FluentSlider(_t, _scale, min, max)
             {
@@ -629,12 +674,26 @@ namespace TouchpadGood
             return y + 84;
         }
 
+        private void RefreshUpdateLabels()
+        {
+            _lblUpdateTitle.Text = L10n.T("lbl_update");
+            string fmt = L10n.T(_updateStateKey);
+            _lblUpdateSub.Text = (_updateStateArg != null && fmt.IndexOf("{0}", StringComparison.Ordinal) >= 0)
+                ? string.Format(fmt, _updateStateArg)
+                : fmt;
+            _btnUpdate.Text = (_pendingUpdate != null && _pendingUpdate.HasUpdate)
+                ? L10n.T("btn_do_upd")
+                : L10n.T("btn_check_upd");
+            _btnUpdate.Primary = (_pendingUpdate != null && _pendingUpdate.HasUpdate);
+            _btnUpdate.Invalidate();
+        }
+
         private void ApplyLanguage()
         {
             bool prev = _isLoadingUi;
             _isLoadingUi = true;
 
-            Text = L10n.T("win_title");
+            Text = L10n.T("win_title") + "  v" + AppMeta.Version;
             _lblPageTitle.Text = L10n.T("page_title");
             _lblHeroSub.Text = L10n.T("hero_sub");
             _btnAdmin.Text = L10n.T("btn_admin");
@@ -686,6 +745,9 @@ namespace TouchpadGood
             _lblHoldTitle.Text = L10n.T("lbl_hold");
             _lblHoldSub.Text = L10n.T("sub_hold");
 
+            _secAbout.Text = L10n.T("sec_about");
+            RefreshUpdateLabels();
+
             _btnRestore.Text = L10n.T("btn_restore");
             _btnReset.Text = L10n.T("btn_reset");
             _lblFooterInfo.Text = L10n.T(_footerKey);
@@ -704,6 +766,130 @@ namespace TouchpadGood
             _isLoadingUi = prev;
             UpdateSliderLabels();
             RefreshDriverStatus();
+        }
+
+        private void OnUpdateButtonClick()
+        {
+            if (_updateBusy) return;
+
+            if (_pendingUpdate != null && _pendingUpdate.HasUpdate)
+            {
+                StartDownloadAndUpdate(_pendingUpdate.DownloadUrl);
+                return;
+            }
+
+            _updateBusy = true;
+            _btnUpdate.Enabled = false;
+            _updateStateKey = "upd_checking";
+            _updateStateArg = null;
+            _lblUpdateSub.ForeColor = _t.TextSecondary;
+            RefreshUpdateLabels();
+
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                UpdateCheckResult res = UpdateChecker.CheckForUpdate();
+                try
+                {
+                    BeginInvoke((Action)(() =>
+                    {
+                        _updateBusy = false;
+                        _btnUpdate.Enabled = true;
+                        if (!res.Success)
+                        {
+                            _pendingUpdate = null;
+                            _updateStateKey = "upd_err";
+                            _updateStateArg = null;
+                            _lblUpdateSub.ForeColor = _t.Danger;
+                        }
+                        else if (res.HasUpdate)
+                        {
+                            _pendingUpdate = res;
+                            _updateStateKey = "upd_avail";
+                            _updateStateArg = res.LatestVersion;
+                            _lblUpdateSub.ForeColor = _t.Accent;
+                        }
+                        else
+                        {
+                            _pendingUpdate = null;
+                            _updateStateKey = "upd_latest";
+                            _updateStateArg = AppMeta.Version;
+                            _lblUpdateSub.ForeColor = _t.Success;
+                        }
+                        RefreshUpdateLabels();
+                    }));
+                }
+                catch { }
+            });
+        }
+
+        private void StartDownloadAndUpdate(string downloadUrl)
+        {
+            _updateBusy = true;
+            _btnUpdate.Enabled = false;
+            _updateStateKey = "upd_downloading";
+            _updateStateArg = "0";
+            _lblUpdateSub.ForeColor = _t.Accent;
+            RefreshUpdateLabels();
+
+            string currentDir = AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\');
+
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                try
+                {
+                    string setupPath = UpdateChecker.DownloadInstaller(downloadUrl, pct =>
+                    {
+                        try
+                        {
+                            BeginInvoke((Action)(() =>
+                            {
+                                _updateStateKey = "upd_downloading";
+                                _updateStateArg = pct.ToString();
+                                RefreshUpdateLabels();
+                            }));
+                        }
+                        catch { }
+                    });
+
+                    try
+                    {
+                        BeginInvoke((Action)(() =>
+                        {
+                            _updateStateKey = "upd_installing";
+                            _updateStateArg = null;
+                            RefreshUpdateLabels();
+                        }));
+                    }
+                    catch { }
+
+                    var psi = new ProcessStartInfo
+                    {
+                        FileName = setupPath,
+                        Arguments = "--update \"--dir=" + currentDir + "\"",
+                        UseShellExecute = true
+                    };
+                    Process.Start(psi);
+
+                    try { BeginInvoke((Action)(() => Close())); } catch { }
+                }
+                catch (Exception ex)
+                {
+                    AppMeta.LogCrash("TouchpadGoodSettings.Update", ex);
+                    try
+                    {
+                        BeginInvoke((Action)(() =>
+                        {
+                            _updateBusy = false;
+                            _btnUpdate.Enabled = true;
+                            _updateStateKey = "upd_err";
+                            _updateStateArg = null;
+                            _lblUpdateSub.ForeColor = _t.Danger;
+                            RefreshUpdateLabels();
+                        }));
+                    }
+                    catch { }
+                }
+            });
         }
 
         private void LoadConfigToUi()
@@ -950,21 +1136,21 @@ namespace TouchpadGood
             int state = QueryDriverState();
             if (state == 2)
             {
-                _lblStatusDot.ForeColor = _t.Success;
+                _statusDot.DotColor = _t.Success;
                 _lblStatusText.Text = L10n.T("status_admin");
                 _btnToggleDriver.Text = L10n.T("btn_stop");
                 _btnAdmin.Enabled = false;
             }
             else if (state == 1)
             {
-                _lblStatusDot.ForeColor = _t.Success;
+                _statusDot.DotColor = _t.Success;
                 _lblStatusText.Text = L10n.T("status_std");
                 _btnToggleDriver.Text = L10n.T("btn_stop");
                 _btnAdmin.Enabled = true;
             }
             else
             {
-                _lblStatusDot.ForeColor = _t.Danger;
+                _statusDot.DotColor = _t.Danger;
                 _lblStatusText.Text = L10n.T("status_stopped");
                 _btnToggleDriver.Text = L10n.T("btn_start");
                 _btnAdmin.Enabled = true;

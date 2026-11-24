@@ -32,7 +32,14 @@ namespace TouchpadGood
                 try { SetProcessDPIAware(); } catch { }
             }
 
+            Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+            Application.ThreadException += (s, ev) => AppMeta.LogCrash("TouchpadGoodSetup", ev.Exception);
+            AppDomain.CurrentDomain.UnhandledException += (s, ev) => AppMeta.LogCrash("TouchpadGoodSetup", ev.ExceptionObject as Exception);
+
             bool autoUninstall = false;
+            bool autoUpdate = false;
+            string customTargetDir = null;
+
             if (args != null)
             {
                 for (int i = 0; i < args.Length; i++)
@@ -43,19 +50,27 @@ namespace TouchpadGood
                     {
                         autoUninstall = true;
                     }
+                    else if (string.Equals(a, "--update", StringComparison.OrdinalIgnoreCase) ||
+                             string.Equals(a, "/update", StringComparison.OrdinalIgnoreCase))
+                    {
+                        autoUpdate = true;
+                    }
+                    else if (a.StartsWith("--dir=", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string d = a.Substring(6).Trim('"');
+                        if (!string.IsNullOrEmpty(d)) customTargetDir = d;
+                    }
                 }
             }
 
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(new SetupForm(autoUninstall));
+            Application.Run(new SetupForm(autoUninstall, autoUpdate, customTargetDir));
         }
     }
 
     internal sealed class SetupForm : Form
     {
-        private const string AppName = "TouchpadGood";
-        private const string AppVersion = "1.0.0";
         private const string UninstallRegPath = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\TouchpadGood";
         private const string RunRegPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
 
@@ -74,6 +89,7 @@ namespace TouchpadGood
         private readonly FluentTheme _t;
         private readonly float _scale = 1.0f;
         private readonly bool _startUninstallMode;
+        private readonly bool _startUpdateMode;
         private readonly string _installDir;
         private bool _busy;
         private bool _selfCleanupOnClose;
@@ -84,19 +100,24 @@ namespace TouchpadGood
         private FluentToggle _tgOptWin, _tgOptAuto, _tgOptDesk, _tgOptLaunch;
         private FluentButton _btnInstall, _btnUninstall, _btnClose;
 
-        public SetupForm(bool startUninstallMode)
+        public SetupForm(bool startUninstallMode, bool startUpdateMode, string customTargetDir)
         {
             _startUninstallMode = startUninstallMode;
+            _startUpdateMode = startUpdateMode;
             _t = FluentTheme.DetectSystemTheme();
-            _installDir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "Programs", AppName);
+            _installDir = !string.IsNullOrEmpty(customTargetDir)
+                ? customTargetDir
+                : Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "Programs", AppMeta.AppName);
 
             var cfg = DriverConfig.Load();
             L10n.CurrentLang = cfg.Language;
 
             using (var g = Graphics.FromHwnd(IntPtr.Zero))
                 _scale = g.DpiX / 96.0f;
+
+            try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
             DoubleBuffered = true;
             InitUi();
@@ -120,7 +141,11 @@ namespace TouchpadGood
         protected override void OnShown(EventArgs e)
         {
             base.OnShown(e);
-            if (_startUninstallMode && IsInstalled)
+            if (_startUpdateMode)
+            {
+                BeginAutoUpdate();
+            }
+            else if (_startUninstallMode && IsInstalled)
             {
                 BeginUninstall();
             }
@@ -157,9 +182,11 @@ namespace TouchpadGood
             ForeColor = _t.TextPrimary;
             Font = FluentTheme.CreateUiFont(9.0f, FontStyle.Regular);
 
-            int formW = 560;
-            int formH = 472;
-            ClientSize = new Size(S(formW), S(formH));
+            int formW = 568;
+            int formH = 476;
+            Rectangle work = Screen.FromPoint(Cursor.Position).WorkingArea;
+            int actualH = Math.Min(S(formH), Math.Max(S(380), work.Height - S(48)));
+            ClientSize = new Size(S(formW), actualH);
 
             int pad = 22;
             int cardW = formW - pad * 2;
@@ -169,9 +196,10 @@ namespace TouchpadGood
             {
                 Location = new Point(S(pad), S(y)),
                 Size = new Size(S(cardW - 140), S(30)),
-                Font = FluentTheme.CreateUiFont(14.5f, FontStyle.Bold),
+                Font = FluentTheme.CreateUiFont(14.2f, FontStyle.Bold),
                 ForeColor = _t.TextPrimary,
-                BackColor = _t.Canvas
+                BackColor = _t.Canvas,
+                AutoEllipsis = true
             };
             Controls.Add(_lblTitle);
 
@@ -200,14 +228,14 @@ namespace TouchpadGood
             {
                 Location = new Point(S(pad), S(y)),
                 Size = new Size(S(cardW), S(20)),
-                Font = FluentTheme.CreateUiFont(8.5f, FontStyle.Regular),
+                Font = FluentTheme.CreateUiFont(8.4f, FontStyle.Regular),
                 ForeColor = _t.TextSecondary,
-                BackColor = _t.Canvas
+                BackColor = _t.Canvas,
+                AutoEllipsis = true
             };
             Controls.Add(_lblSub);
             y += 28;
 
-            // Install path info card
             var pathCard = new FluentCard(_t, 7f * _scale)
             {
                 Location = new Point(S(pad), S(y)),
@@ -217,15 +245,15 @@ namespace TouchpadGood
             {
                 Location = new Point(S(14), S(10)),
                 Size = new Size(S(cardW - 28), S(20)),
-                Font = FluentTheme.CreateUiFont(8.4f, FontStyle.Regular),
+                Font = FluentTheme.CreateUiFont(8.3f, FontStyle.Regular),
                 ForeColor = _t.TextSecondary,
-                BackColor = _t.Card
+                BackColor = _t.Card,
+                AutoEllipsis = true
             };
             pathCard.Controls.Add(_lblPath);
             Controls.Add(pathCard);
             y += 50;
 
-            // Options Card
             var optCard = new FluentCard(_t, 8f * _scale)
             {
                 Location = new Point(S(pad), S(y)),
@@ -241,23 +269,22 @@ namespace TouchpadGood
             Controls.Add(optCard);
             y += 220;
 
-            // Status bar text
             _lblStatus = new Label
             {
                 Location = new Point(S(pad + 2), S(y)),
                 Size = new Size(S(cardW - 4), S(28)),
                 Font = FluentTheme.CreateUiFont(8.5f, FontStyle.Regular),
                 ForeColor = _t.Accent,
-                BackColor = _t.Canvas
+                BackColor = _t.Canvas,
+                AutoEllipsis = true
             };
             Controls.Add(_lblStatus);
 
-            // Bottom Action Bar
-            int footerH = 60;
+            int footerH = S(60);
             var footer = new Panel
             {
-                Location = new Point(0, S(formH - footerH)),
-                Size = new Size(S(formW), S(footerH)),
+                Location = new Point(0, actualH - footerH),
+                Size = new Size(S(formW), footerH),
                 BackColor = _t.Card
             };
             footer.Paint += (s, e) =>
@@ -305,14 +332,15 @@ namespace TouchpadGood
             lbl = new Label
             {
                 Location = new Point(S(16), S(y + 4)),
-                Size = new Size(S(cardW - 118), S(28)),
-                Font = FluentTheme.CreateUiFont(8.7f, FontStyle.Regular),
+                Size = new Size(S(cardW - 120), S(28)),
+                Font = FluentTheme.CreateUiFont(8.6f, FontStyle.Regular),
                 ForeColor = _t.TextPrimary,
-                BackColor = _t.Card
+                BackColor = _t.Card,
+                AutoEllipsis = true
             };
             tg = new FluentToggle(_t, _scale)
             {
-                Location = new Point(S(cardW - 102), S(y + 4)),
+                Location = new Point(S(cardW - 104), S(y + 4)),
                 Font = FluentTheme.CreateUiFont(8.4f, FontStyle.Regular),
                 Checked = defaultVal
             };
@@ -333,7 +361,7 @@ namespace TouchpadGood
 
         private void ApplyLanguage()
         {
-            Text = L10n.T("setup_title");
+            Text = L10n.T("setup_title") + " v" + AppMeta.Version;
             _lblTitle.Text = L10n.T("setup_title");
             _lblSub.Text = L10n.T("setup_sub");
             _lblPath.Text = L10n.T("setup_ready") + _installDir;
@@ -359,7 +387,7 @@ namespace TouchpadGood
             if (inst && string.IsNullOrEmpty(_lblStatus.Text))
             {
                 _lblStatus.ForeColor = _t.TextSecondary;
-                _lblStatus.Text = L10n.T("setup_installed") + " · v" + AppVersion;
+                _lblStatus.Text = L10n.T("setup_installed") + " · v" + AppMeta.Version;
             }
             _btnInstall.Invalidate();
             _btnUninstall.Invalidate();
@@ -376,6 +404,51 @@ namespace TouchpadGood
             _tgOptDesk.Enabled = !busy;
             _tgOptLaunch.Enabled = !busy;
             _cbLang.Enabled = !busy;
+        }
+
+        private void BeginAutoUpdate()
+        {
+            if (_busy) return;
+            SetBusy(true);
+            _lblStatus.ForeColor = _t.Accent;
+            _lblStatus.Text = L10n.T("upd_installing");
+
+            string lang = L10n.CurrentLang;
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                string error = null;
+                try
+                {
+                    PerformInPlaceUpdate(lang);
+                }
+                catch (Exception ex)
+                {
+                    error = ex.Message;
+                    AppMeta.LogCrash("TouchpadGoodSetup.Update", ex);
+                }
+
+                try
+                {
+                    BeginInvoke((Action)(() =>
+                    {
+                        SetBusy(false);
+                        if (error == null)
+                        {
+                            _lblStatus.ForeColor = _t.Success;
+                            _lblStatus.Text = L10n.T("setup_done");
+                            var closeTimer = new System.Windows.Forms.Timer { Interval = 900 };
+                            closeTimer.Tick += (s2, e2) => { closeTimer.Stop(); closeTimer.Dispose(); Close(); };
+                            closeTimer.Start();
+                        }
+                        else
+                        {
+                            _lblStatus.ForeColor = _t.Danger;
+                            _lblStatus.Text = "Error: " + error;
+                        }
+                    }));
+                }
+                catch { }
+            });
         }
 
         private void BeginInstall()
@@ -401,6 +474,7 @@ namespace TouchpadGood
                 catch (Exception ex)
                 {
                     error = ex.Message;
+                    AppMeta.LogCrash("TouchpadGoodSetup.Install", ex);
                 }
 
                 try
@@ -442,6 +516,7 @@ namespace TouchpadGood
                 catch (Exception ex)
                 {
                     error = ex.Message;
+                    AppMeta.LogCrash("TouchpadGoodSetup.Uninstall", ex);
                 }
 
                 try
@@ -466,6 +541,39 @@ namespace TouchpadGood
             });
         }
 
+        // Seamless in-place update preserving user's existing settings and install location
+        private void PerformInPlaceUpdate(string lang)
+        {
+            StopAllRunningApps();
+            Directory.CreateDirectory(_installDir);
+
+            string drvPath = Path.Combine(_installDir, "TouchpadGood.exe");
+            string setPath = Path.Combine(_installDir, "TouchpadGoodSettings.exe");
+            string uninstPath = Path.Combine(_installDir, "TouchpadGoodUninstall.exe");
+
+            ExtractResourceWithRetry("TouchpadGood.exe", drvPath);
+            ExtractResourceWithRetry("TouchpadGoodSettings.exe", setPath);
+
+            // Update uninstaller & Add/Remove Programs version if standard install folder
+            string selfPath = Assembly.GetExecutingAssembly().Location;
+            if (File.Exists(uninstPath) && !string.Equals(Path.GetFullPath(selfPath), Path.GetFullPath(uninstPath), StringComparison.OrdinalIgnoreCase))
+            {
+                CopyFileWithRetry(selfPath, uninstPath);
+            }
+            try
+            {
+                using (var key = Registry.CurrentUser.OpenSubKey(UninstallRegPath, true))
+                {
+                    if (key != null) key.SetValue("DisplayVersion", AppMeta.Version);
+                }
+            }
+            catch { }
+
+            try { Process.Start(drvPath); } catch { }
+            Thread.Sleep(200);
+            try { Process.Start(setPath); } catch { }
+        }
+
         private void PerformInstall(bool optWin, bool optAuto, bool optDesk, bool optLaunch, string lang)
         {
             StopAllRunningApps();
@@ -475,23 +583,21 @@ namespace TouchpadGood
             string setPath = Path.Combine(_installDir, "TouchpadGoodSettings.exe");
             string uninstPath = Path.Combine(_installDir, "TouchpadGoodUninstall.exe");
 
-            ExtractResource("TouchpadGood.exe", drvPath);
-            ExtractResource("TouchpadGoodSettings.exe", setPath);
+            ExtractResourceWithRetry("TouchpadGood.exe", drvPath);
+            ExtractResourceWithRetry("TouchpadGoodSettings.exe", setPath);
 
             string selfPath = Assembly.GetExecutingAssembly().Location;
             if (!string.Equals(Path.GetFullPath(selfPath), Path.GetFullPath(uninstPath), StringComparison.OrdinalIgnoreCase))
             {
-                File.Copy(selfPath, uninstPath, true);
+                CopyFileWithRetry(selfPath, uninstPath);
             }
 
-            // Start Menu shortcuts
             string startDir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.Programs), AppName);
+                Environment.GetFolderPath(Environment.SpecialFolder.Programs), AppMeta.AppName);
             Directory.CreateDirectory(startDir);
             CreateShortcut(Path.Combine(startDir, "TouchpadGood Settings.lnk"), setPath, _installDir, "", "TouchpadGood Settings");
             CreateShortcut(Path.Combine(startDir, "Uninstall TouchpadGood.lnk"), uninstPath, _installDir, "--uninstall", "Uninstall TouchpadGood");
 
-            // Desktop shortcut
             string deskLink = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
                 "TouchpadGood Settings.lnk");
@@ -500,13 +606,12 @@ namespace TouchpadGood
             else if (File.Exists(deskLink))
                 try { File.Delete(deskLink); } catch { }
 
-            // Add/Remove Programs registration
             using (var key = Registry.CurrentUser.CreateSubKey(UninstallRegPath))
             {
                 if (key != null)
                 {
-                    key.SetValue("DisplayName", AppName);
-                    key.SetValue("DisplayVersion", AppVersion);
+                    key.SetValue("DisplayName", AppMeta.AppName);
+                    key.SetValue("DisplayVersion", AppMeta.Version);
                     key.SetValue("Publisher", "TouchpadGood");
                     key.SetValue("InstallLocation", _installDir);
                     key.SetValue("DisplayIcon", setPath);
@@ -516,7 +621,6 @@ namespace TouchpadGood
                 }
             }
 
-            // Config & Windows optimization
             var cfg = DriverConfig.Load();
             cfg.Language = lang;
             cfg.Enabled = true;
@@ -524,30 +628,21 @@ namespace TouchpadGood
             cfg.Save();
 
             if (optWin)
-            {
                 WindowsTouchpadSync.ApplyRecommendedWindowsSetup(cfg);
-            }
             else
-            {
                 WindowsTouchpadSync.Apply(cfg);
-            }
 
-            // Clean legacy TouchpadDriver startup if present
             RemoveAutoStart("TouchpadDriver", false);
 
             if (optAuto)
-            {
-                RegisterAutoStart(AppName, drvPath);
-            }
+                RegisterAutoStart(AppMeta.AppName, drvPath);
             else
-            {
-                RemoveAutoStart(AppName, false);
-            }
+                RemoveAutoStart(AppMeta.AppName, false);
 
             if (optLaunch)
             {
                 try { Process.Start(drvPath); } catch { }
-                Thread.Sleep(150);
+                Thread.Sleep(180);
                 try { Process.Start(setPath); } catch { }
             }
         }
@@ -555,16 +650,15 @@ namespace TouchpadGood
         private void PerformUninstall()
         {
             StopAllRunningApps();
-            RemoveAutoStart(AppName, true);
+            RemoveAutoStart(AppMeta.AppName, true);
             RemoveAutoStart("TouchpadDriver", false);
 
             WindowsTouchpadSync.RestoreOriginal();
 
-            // Delete shortcuts
             try
             {
                 string startDir = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.Programs), AppName);
+                    Environment.GetFolderPath(Environment.SpecialFolder.Programs), AppMeta.AppName);
                 if (Directory.Exists(startDir)) Directory.Delete(startDir, true);
             }
             catch { }
@@ -578,18 +672,16 @@ namespace TouchpadGood
             }
             catch { }
 
-            // Clean Registry
             try { Registry.CurrentUser.DeleteSubKeyTree(UninstallRegPath, false); } catch { }
             try { Registry.CurrentUser.DeleteSubKeyTree(@"Software\TouchpadGood", false); } catch { }
 
-            // Delete installed binaries
             string drvPath = Path.Combine(_installDir, "TouchpadGood.exe");
             string setPath = Path.Combine(_installDir, "TouchpadGoodSettings.exe");
             string uninstPath = Path.Combine(_installDir, "TouchpadGoodUninstall.exe");
             string selfPath = Path.GetFullPath(Assembly.GetExecutingAssembly().Location);
 
-            TryDeleteFile(drvPath);
-            TryDeleteFile(setPath);
+            TryDeleteFileWithRetry(drvPath);
+            TryDeleteFileWithRetry(setPath);
 
             if (string.Equals(selfPath, Path.GetFullPath(uninstPath), StringComparison.OrdinalIgnoreCase))
             {
@@ -597,24 +689,76 @@ namespace TouchpadGood
             }
             else
             {
-                TryDeleteFile(uninstPath);
+                TryDeleteFileWithRetry(uninstPath);
                 try { if (Directory.Exists(_installDir)) Directory.Delete(_installDir, true); } catch { }
             }
         }
 
-        private static void ExtractResource(string resourceName, string destPath)
+        private static void ExtractResourceWithRetry(string resourceName, string destPath)
         {
-            var asm = Assembly.GetExecutingAssembly();
-            using (Stream s = asm.GetManifestResourceStream(resourceName))
+            Exception lastErr = null;
+            for (int attempt = 0; attempt < 12; attempt++)
             {
-                if (s == null)
-                    throw new InvalidOperationException("Embedded resource missing: " + resourceName);
-                using (var fs = new FileStream(destPath, FileMode.Create, FileAccess.Write, FileShare.None))
+                try
                 {
-                    byte[] buf = new byte[65536];
-                    int read;
-                    while ((read = s.Read(buf, 0, buf.Length)) > 0)
-                        fs.Write(buf, 0, read);
+                    var asm = Assembly.GetExecutingAssembly();
+                    using (Stream s = asm.GetManifestResourceStream(resourceName))
+                    {
+                        if (s == null)
+                            throw new InvalidOperationException("Embedded resource missing: " + resourceName);
+                        using (var fs = new FileStream(destPath, FileMode.Create, FileAccess.Write, FileShare.None))
+                        {
+                            byte[] buf = new byte[65536];
+                            int read;
+                            while ((read = s.Read(buf, 0, buf.Length)) > 0)
+                                fs.Write(buf, 0, read);
+                        }
+                    }
+                    return;
+                }
+                catch (IOException ex)
+                {
+                    lastErr = ex;
+                    Thread.Sleep(180);
+                }
+                catch (UnauthorizedAccessException ex)
+                {
+                    lastErr = ex;
+                    Thread.Sleep(180);
+                }
+            }
+            if (lastErr != null) throw lastErr;
+        }
+
+        private static void CopyFileWithRetry(string srcPath, string destPath)
+        {
+            for (int attempt = 0; attempt < 10; attempt++)
+            {
+                try
+                {
+                    File.Copy(srcPath, destPath, true);
+                    return;
+                }
+                catch
+                {
+                    Thread.Sleep(150);
+                }
+            }
+        }
+
+        private static void TryDeleteFileWithRetry(string path)
+        {
+            if (!File.Exists(path)) return;
+            for (int attempt = 0; attempt < 10; attempt++)
+            {
+                try
+                {
+                    File.Delete(path);
+                    return;
+                }
+                catch
+                {
+                    Thread.Sleep(150);
                 }
             }
         }
@@ -627,8 +771,9 @@ namespace TouchpadGood
             IntPtr hLeg = FindWindow("TouchpadDriver_HostClass", null);
             if (hLeg != IntPtr.Zero) PostMessage(hLeg, WM_LEGACY_STOP, new IntPtr(1), IntPtr.Zero);
 
-            Thread.Sleep(250);
+            Thread.Sleep(300);
 
+            int myPid = Process.GetCurrentProcess().Id;
             string[] names = new[] { "TouchpadGood", "TouchpadGoodSettings", "TouchpadDriver", "TouchpadSettings" };
             for (int i = 0; i < names.Length; i++)
             {
@@ -639,10 +784,10 @@ namespace TouchpadGood
                     {
                         try
                         {
-                            if (!procs[j].HasExited)
+                            if (procs[j].Id != myPid && !procs[j].HasExited)
                             {
                                 procs[j].Kill();
-                                procs[j].WaitForExit(1500);
+                                procs[j].WaitForExit(2000);
                             }
                         }
                         catch { }
@@ -651,6 +796,7 @@ namespace TouchpadGood
                 }
                 catch { }
             }
+            Thread.Sleep(150);
         }
 
         private static void RegisterAutoStart(string taskName, string exePath)
@@ -709,7 +855,6 @@ namespace TouchpadGood
             }
             else
             {
-                // Graceful fallback to HKCU Run if user declined UAC prompt
                 try
                 {
                     using (var k = Registry.CurrentUser.OpenSubKey(RunRegPath, true))
@@ -728,7 +873,6 @@ namespace TouchpadGood
             }
             catch { }
 
-            // Check if task actually exists before prompting UAC
             bool exists = false;
             try
             {
@@ -785,11 +929,6 @@ namespace TouchpadGood
                 Marshal.FinalReleaseComObject(shell);
             }
             catch { }
-        }
-
-        private static void TryDeleteFile(string path)
-        {
-            try { if (File.Exists(path)) File.Delete(path); } catch { }
         }
     }
 }

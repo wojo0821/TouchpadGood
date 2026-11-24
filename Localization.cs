@@ -157,7 +157,18 @@ namespace TouchpadGood
                 { "setup_installed", "이미 설치되어 있습니다" },
                 { "setup_ready", "설치 경로: " },
                 { "setup_done", "설치가 완료되었습니다! TouchpadGood이 백그라운드에서 실행 중입니다." },
-                { "setup_uninstalled", "TouchpadGood을 완전히 제거하고 Windows 기본 터치패드 설정을 복구했습니다." }
+                { "setup_uninstalled", "TouchpadGood을 완전히 제거하고 Windows 기본 터치패드 설정을 복구했습니다." },
+                { "sec_about", "업데이트 및 정보" },
+                { "lbl_update", "소프트웨어 업데이트" },
+                { "sub_update_idle", "현재 버전 v{0} · GitHub에서 최신 버전을 확인합니다." },
+                { "btn_check_upd", "업데이트 확인" },
+                { "btn_do_upd", "지금 업데이트" },
+                { "upd_checking", "GitHub에서 최신 버전을 확인하는 중..." },
+                { "upd_latest", "이미 최신 버전(v{0})을 사용 중입니다." },
+                { "upd_avail", "새 버전 v{0} 사용 가능! 지금 바로 업데이트할 수 있습니다." },
+                { "upd_downloading", "업데이트 다운로드 중... {0}%" },
+                { "upd_installing", "업데이트 설치 중... 잠시만 기다려 주세요." },
+                { "upd_err", "업데이트 확인 실패: 네트워크 또는 GitHub 연결을 확인하세요." }
             };
 
             d["en"] = new Dictionary<string, string>
@@ -251,7 +262,18 @@ namespace TouchpadGood
                 { "setup_installed", "Already installed" },
                 { "setup_ready", "Install location: " },
                 { "setup_done", "Installation complete! TouchpadGood is now running in the background." },
-                { "setup_uninstalled", "TouchpadGood uninstalled and Windows touchpad defaults restored." }
+                { "setup_uninstalled", "TouchpadGood uninstalled and Windows touchpad defaults restored." },
+                { "sec_about", "Updates & About" },
+                { "lbl_update", "Software Update" },
+                { "sub_update_idle", "Current version v{0} · Check GitHub for the latest release." },
+                { "btn_check_upd", "Check Updates" },
+                { "btn_do_upd", "Update Now" },
+                { "upd_checking", "Checking GitHub for updates..." },
+                { "upd_latest", "You're up to date (v{0})." },
+                { "upd_avail", "Version v{0} is available! Click Update Now to install." },
+                { "upd_downloading", "Downloading update... {0}%" },
+                { "upd_installing", "Installing update... please wait." },
+                { "upd_err", "Update check failed: please check your network connection." }
             };
 
             d["ja"] = new Dictionary<string, string>
@@ -338,7 +360,18 @@ namespace TouchpadGood
                 { "setup_installed", "インストール済み" },
                 { "setup_ready", "インストール先: " },
                 { "setup_done", "インストール完了！TouchpadGoodがバックグラウンドで実行中です。" },
-                { "setup_uninstalled", "TouchpadGoodを削除し、Windows標準設定を復元しました。" }
+                { "setup_uninstalled", "TouchpadGoodを削除し、Windows標準設定を復元しました。" },
+                { "sec_about", "アップデートと情報" },
+                { "lbl_update", "ソフトウェアアップデート" },
+                { "sub_update_idle", "現在のバージョン v{0} · GitHubで最新バージョンを確認します。" },
+                { "btn_check_upd", "更新を確認" },
+                { "btn_do_upd", "今すぐ更新" },
+                { "upd_checking", "GitHubで最新バージョンを確認中..." },
+                { "upd_latest", "最新バージョン (v{0}) を使用しています。" },
+                { "upd_avail", "新バージョン v{0} が利用可能です！" },
+                { "upd_downloading", "アップデートをダウンロード中... {0}%" },
+                { "upd_installing", "アップデートをインストール中..." },
+                { "upd_err", "更新の確認に失敗しました。ネットワーク接続を確認してください。" }
             };
 
             d["zh"] = new Dictionary<string, string>
@@ -425,7 +458,18 @@ namespace TouchpadGood
                 { "setup_installed", "已安装" },
                 { "setup_ready", "安装路径: " },
                 { "setup_done", "安装完成！TouchpadGood 已在后台运行。" },
-                { "setup_uninstalled", "已彻底卸载 TouchpadGood 并恢复 Windows 默认设置。" }
+                { "setup_uninstalled", "已彻底卸载 TouchpadGood 并恢复 Windows 默认设置。" },
+                { "sec_about", "更新与关于" },
+                { "lbl_update", "软件更新" },
+                { "sub_update_idle", "当前版本 v{0} · 从 GitHub 检查最新版本。" },
+                { "btn_check_upd", "检查更新" },
+                { "btn_do_upd", "立即更新" },
+                { "upd_checking", "正在从 GitHub 检查更新..." },
+                { "upd_latest", "已是最新版本 (v{0})。" },
+                { "upd_avail", "发现新版本 v{0}！点击立即更新。" },
+                { "upd_downloading", "正在下载更新... {0}%" },
+                { "upd_installing", "正在安装更新，请稍候..." },
+                { "upd_err", "检查更新失败，请检查网络连接。" }
             };
 
             d["es"] = new Dictionary<string, string>
@@ -512,7 +556,18 @@ namespace TouchpadGood
                 { "setup_installed", "Ya instalado" },
                 { "setup_ready", "Ruta: " },
                 { "setup_done", "¡Instalación completa! TouchpadGood está activo en segundo plano." },
-                { "setup_uninstalled", "TouchpadGood desinstalado y ajustes de Windows restaurados." }
+                { "setup_uninstalled", "TouchpadGood desinstalado y ajustes de Windows restaurados." },
+                { "sec_about", "Actualizaciones" },
+                { "lbl_update", "Actualización de software" },
+                { "sub_update_idle", "Versión actual v{0} · Comprobar en GitHub." },
+                { "btn_check_upd", "Buscar" },
+                { "btn_do_upd", "Actualizar" },
+                { "upd_checking", "Buscando actualizaciones en GitHub..." },
+                { "upd_latest", "Ya tienes la última versión (v{0})." },
+                { "upd_avail", "¡Nueva versión v{0} disponible!" },
+                { "upd_downloading", "Descargando actualización... {0}%" },
+                { "upd_installing", "Instalando actualización..." },
+                { "upd_err", "Error al buscar actualizaciones. Comprueba tu conexión." }
             };
 
             d["de"] = new Dictionary<string, string>
@@ -599,7 +654,18 @@ namespace TouchpadGood
                 { "setup_installed", "Bereits installiert" },
                 { "setup_ready", "Zielordner: " },
                 { "setup_done", "Installation abgeschlossen! TouchpadGood läuft im Hintergrund." },
-                { "setup_uninstalled", "TouchpadGood deinstalliert und Windows-Standards wiederhergestellt." }
+                { "setup_uninstalled", "TouchpadGood deinstalliert und Windows-Standards wiederhergestellt." },
+                { "sec_about", "Updates & Info" },
+                { "lbl_update", "Software-Update" },
+                { "sub_update_idle", "Aktuelle Version v{0} · Auf GitHub prüfen." },
+                { "btn_check_upd", "Prüfen" },
+                { "btn_do_upd", "Aktualisieren" },
+                { "upd_checking", "Suche auf GitHub nach Updates..." },
+                { "upd_latest", "Sie nutzen bereits die neueste Version (v{0})." },
+                { "upd_avail", "Neue Version v{0} verfügbar!" },
+                { "upd_downloading", "Update wird heruntergeladen... {0}%" },
+                { "upd_installing", "Update wird installiert..." },
+                { "upd_err", "Update-Prüfung fehlgeschlagen. Netzwerk prüfen." }
             };
 
             d["fr"] = new Dictionary<string, string>
@@ -686,7 +752,18 @@ namespace TouchpadGood
                 { "setup_installed", "Déjà installé" },
                 { "setup_ready", "Dossier : " },
                 { "setup_done", "Installation terminée ! TouchpadGood fonctionne en arrière-plan." },
-                { "setup_uninstalled", "TouchpadGood désinstallé et paramètres Windows restaurés." }
+                { "setup_uninstalled", "TouchpadGood désinstallé et paramètres Windows restaurés." },
+                { "sec_about", "Mises à jour" },
+                { "lbl_update", "Mise à jour logicielle" },
+                { "sub_update_idle", "Version actuelle v{0} · Vérifier sur GitHub." },
+                { "btn_check_upd", "Vérifier" },
+                { "btn_do_upd", "Mettre à jour" },
+                { "upd_checking", "Vérification sur GitHub..." },
+                { "upd_latest", "Vous utilisez déjà la dernière version (v{0})." },
+                { "upd_avail", "Nouvelle version v{0} disponible !" },
+                { "upd_downloading", "Téléchargement... {0}%" },
+                { "upd_installing", "Installation de la mise à jour..." },
+                { "upd_err", "Échec de la vérification. Vérifiez votre réseau." }
             };
 
             return d;
