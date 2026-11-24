@@ -1,0 +1,13 @@
+# Compiled binaries (attach TouchpadGoodSetup.exe to GitHub Releases)
+*.exe
+*.pdb
+*.dll
+*.lnk
+
+# Build & editor artifacts
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.log
