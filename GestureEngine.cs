@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading;
 
 namespace TouchpadGood
 {
@@ -24,13 +25,17 @@ namespace TouchpadGood
 
         private const int WH_MOUSE_LL = 14;
         private const int WM_MOUSEMOVE = 0x0200;
+        private const uint WM_QUIT = 0x0012;
+        private const uint WM_APP_HOOK_ON = 0x8001;
+        private const uint WM_APP_HOOK_OFF = 0x8002;
 
         private const double BOTTOM_EDGE_Y_START = 0.82;
         private const double BOTTOM_EDGE_Y_CANCEL = 0.72;
         private const double BOTTOM_EDGE_X_MAX = 0.88;
         private const double BOTTOM_HSCROLL_TRIGGER_X = 0.0045;
-        private const double BOTTOM_HSCROLL_UNITS_PER_WIDTH = 2200.0;
-        private const int BOTTOM_HSCROLL_MIN_EMIT = 4;
+        private const double BOTTOM_HSCROLL_UNITS_PER_WIDTH = 2000.0;
+        private const double BOTTOM_HSCROLL_INTERVAL_MS = 14.0;
+        private const int BOTTOM_HSCROLL_MIN_EMIT = 6;
 
         private static readonly IntPtr ExtraInfoPtr = new IntPtr(unchecked((int)RawInputTouchpad.SYNTHETIC_EXTRA_INFO_TAG));
         private static readonly double TicksToMs = 1000.0 / Stopwatch.Frequency;
@@ -91,6 +96,18 @@ namespace TouchpadGood
             public IntPtr dwExtraInfo;
         }
 
+        [StructLayout(LayoutKind.Sequential)]
+        private struct MSG
+        {
+            public IntPtr hwnd;
+            public uint message;
+            public IntPtr wParam;
+            public IntPtr lParam;
+            public uint time;
+            public int ptX;
+            public int ptY;
+        }
+
         private delegate IntPtr LowLevelMouseProc(int nCode, IntPtr wParam, IntPtr lParam);
 
         [DllImport("user32.dll", SetLastError = true)]
@@ -107,6 +124,24 @@ namespace TouchpadGood
 
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         private static extern IntPtr GetModuleHandle(string lpModuleName);
+
+        [DllImport("kernel32.dll")]
+        private static extern uint GetCurrentThreadId();
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        private static extern int GetMessage(out MSG lpMsg, IntPtr hWnd, uint wMsgFilterMin, uint wMsgFilterMax);
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        private static extern bool PeekMessage(out MSG lpMsg, IntPtr hWnd, uint wMsgFilterMin, uint wMsgFilterMax, uint wRemoveMsg);
+
+        [DllImport("user32.dll")]
+        private static extern bool TranslateMessage(ref MSG lpMsg);
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        private static extern IntPtr DispatchMessage(ref MSG lpMsg);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool PostThreadMessage(uint idThread, uint msg, IntPtr wParam, IntPtr lParam);
 
         [DllImport("user32.dll")]
         private static extern bool GetCursorPos(out POINT lpPoint);
@@ -182,14 +217,21 @@ namespace TouchpadGood
         private double _calTouchX, _calTouchY;
         private double _calNativeX, _calNativeY;
 
-        // Bottom-edge horizontal scroll (on-demand WH_MOUSE_LL ONLY while actively scrolling -> 0 hooks normally!)
+        // Bottom-edge horizontal scroll:
+        // Dedicated hook thread ONLY installs WH_MOUSE_LL while actively scrolling so SendInput on the main thread
+        // NEVER deadlocks with WH_MOUSE_LL (zero LowLevelHooksTimeout stalls, 0 hooks when idle!).
         private readonly LowLevelMouseProc _mouseHookProc;
+        private Thread _hookThread;
+        private volatile uint _hookThreadId;
         private IntPtr _mouseHook = IntPtr.Zero;
+        private volatile bool _suppressMouseMove;
+        private volatile int _anchorX, _anchorY;
+
         private bool _bottomScrollCandidate;
         private bool _bottomScrollActive;
         private double _bottomStartX, _bottomStartY;
         private double _bottomHScrollAccum;
-        private double _bottomSmoothDx;
+        private double _lastHScrollEmitMs;
         private POINT _bottomAnchorPt;
 
         public GestureEngine(DriverConfig config, Action<int> scheduleTimerMs)
@@ -197,6 +239,69 @@ namespace TouchpadGood
             _config = config;
             _scheduleTimerMs = scheduleTimerMs;
             _mouseHookProc = OnLowLevelMouseHook;
+        }
+
+        private void EnsureHookThreadStarted()
+        {
+            if (_hookThreadId != 0) return;
+            using (var ready = new ManualResetEvent(false))
+            {
+                _hookThread = new Thread(() => HookThreadMain(ready))
+                {
+                    IsBackground = true,
+                    Priority = ThreadPriority.AboveNormal,
+                    Name = "TouchpadGood_EdgeHook"
+                };
+                _hookThread.Start();
+                ready.WaitOne(1000);
+            }
+        }
+
+        private void HookThreadMain(ManualResetEvent ready)
+        {
+            MSG msg;
+            // Force Win32 message queue creation before exposing thread ID to PostThreadMessage
+            PeekMessage(out msg, IntPtr.Zero, 0, 0, 0);
+            _hookThreadId = GetCurrentThreadId();
+            ready.Set();
+
+            IntPtr hMod = GetModuleHandle(null);
+            try
+            {
+                while (GetMessage(out msg, IntPtr.Zero, 0, 0) > 0)
+                {
+                    if (msg.message == WM_APP_HOOK_ON)
+                    {
+                        if (_mouseHook == IntPtr.Zero && _suppressMouseMove)
+                        {
+                            _mouseHook = SetWindowsHookEx(WH_MOUSE_LL, _mouseHookProc, hMod, 0);
+                            SetCursorPos(_anchorX, _anchorY);
+                        }
+                    }
+                    else if (msg.message == WM_APP_HOOK_OFF)
+                    {
+                        if (_mouseHook != IntPtr.Zero)
+                        {
+                            UnhookWindowsHookEx(_mouseHook);
+                            _mouseHook = IntPtr.Zero;
+                        }
+                    }
+                    else
+                    {
+                        TranslateMessage(ref msg);
+                        DispatchMessage(ref msg);
+                    }
+                }
+            }
+            finally
+            {
+                if (_mouseHook != IntPtr.Zero)
+                {
+                    UnhookWindowsHookEx(_mouseHook);
+                    _mouseHook = IntPtr.Zero;
+                }
+                _hookThreadId = 0;
+            }
         }
 
         public static double NowMs()
@@ -233,11 +338,11 @@ namespace TouchpadGood
 
         private IntPtr OnLowLevelMouseHook(int nCode, IntPtr wParam, IntPtr lParam)
         {
-            if (nCode >= 0 && _bottomScrollActive && wParam.ToInt32() == WM_MOUSEMOVE)
+            if (nCode >= 0 && _suppressMouseMove && wParam.ToInt32() == WM_MOUSEMOVE)
             {
                 MSLLHOOKSTRUCT* ms = (MSLLHOOKSTRUCT*)lParam;
                 // NOTE: Windows Precision Touchpad cursor moves carry LLMHF_INJECTED!
-                // Only allow our own tagged synthetic events through; block all PTP cursor movement cleanly.
+                // Block all non-TouchpadGood WM_MOUSEMOVE while actively scrolling on the bottom edge.
                 if (ms->dwExtraInfo != ExtraInfoPtr)
                     return new IntPtr(1);
             }
@@ -248,19 +353,18 @@ namespace TouchpadGood
         {
             if (enable)
             {
-                if (_mouseHook == IntPtr.Zero)
-                {
-                    IntPtr hMod = GetModuleHandle(null);
-                    _mouseHook = SetWindowsHookEx(WH_MOUSE_LL, _mouseHookProc, hMod, 0);
-                }
+                EnsureHookThreadStarted();
+                _anchorX = _bottomAnchorPt.X;
+                _anchorY = _bottomAnchorPt.Y;
+                _suppressMouseMove = true;
+                uint tid = _hookThreadId;
+                if (tid != 0) PostThreadMessage(tid, WM_APP_HOOK_ON, IntPtr.Zero, IntPtr.Zero);
             }
             else
             {
-                if (_mouseHook != IntPtr.Zero)
-                {
-                    UnhookWindowsHookEx(_mouseHook);
-                    _mouseHook = IntPtr.Zero;
-                }
+                _suppressMouseMove = false;
+                uint tid = _hookThreadId;
+                if (tid != 0) PostThreadMessage(tid, WM_APP_HOOK_OFF, IntPtr.Zero, IntPtr.Zero);
             }
         }
 
@@ -269,7 +373,7 @@ namespace TouchpadGood
             _bottomScrollCandidate = false;
             _bottomScrollActive = false;
             _bottomHScrollAccum = 0;
-            _bottomSmoothDx = 0;
+            _lastHScrollEmitMs = 0;
             SetTempMouseSuppression(false);
         }
 
@@ -283,13 +387,7 @@ namespace TouchpadGood
 
         public void OnNativeMouseMove(int dx, int dy, double now)
         {
-            if (!_config.Enabled) return;
-            if (_bottomScrollActive)
-            {
-                // Safety fallback if foreground window is elevated while driver runs as standard user
-                SetCursorPos(_bottomAnchorPt.X, _bottomAnchorPt.Y);
-                return;
-            }
+            if (!_config.Enabled || _bottomScrollActive) return;
 
             if (_bridgingOne)
             {
@@ -542,9 +640,9 @@ namespace TouchpadGood
                             else if (adx >= BOTTOM_HSCROLL_TRIGGER_X && adx > ady * 1.3)
                             {
                                 _bottomScrollActive = true;
+                                _lastHScrollEmitMs = 0;
                                 SetTempMouseSuppression(true);
-                                SetCursorPos(_bottomAnchorPt.X, _bottomAnchorPt.Y);
-                                EmitBottomHScrollDelta(cnx - _bottomStartX);
+                                EmitBottomHScrollDelta(cnx - _bottomStartX, now);
                                 RescheduleTimer(now);
                                 return;
                             }
@@ -555,7 +653,7 @@ namespace TouchpadGood
                             {
                                 double ndx = sumDx / maxX;
                                 if (Math.Abs(ndx) < 0.35)
-                                    EmitBottomHScrollDelta(ndx);
+                                    EmitBottomHScrollDelta(ndx, now);
                             }
                             RescheduleTimer(now);
                             return;
@@ -1267,15 +1365,18 @@ namespace TouchpadGood
             CancelBottomEdgeScroll();
         }
 
-        private void EmitBottomHScrollDelta(double ndx)
+        private void EmitBottomHScrollDelta(double ndx, double now)
         {
-            _bottomSmoothDx = (_bottomSmoothDx == 0.0) ? ndx : (_bottomSmoothDx * 0.35 + ndx * 0.65);
-            _bottomHScrollAccum += _bottomSmoothDx * BOTTOM_HSCROLL_UNITS_PER_WIDTH;
-            int wheelDelta = (int)Math.Truncate(_bottomHScrollAccum);
-            if (Math.Abs(wheelDelta) >= BOTTOM_HSCROLL_MIN_EMIT)
+            _bottomHScrollAccum += ndx * BOTTOM_HSCROLL_UNITS_PER_WIDTH;
+            if (_lastHScrollEmitMs == 0 || (now - _lastHScrollEmitMs) >= BOTTOM_HSCROLL_INTERVAL_MS)
             {
-                _bottomHScrollAccum -= wheelDelta;
-                SendHWheel(wheelDelta);
+                int wheelDelta = (int)Math.Truncate(_bottomHScrollAccum);
+                if (Math.Abs(wheelDelta) >= BOTTOM_HSCROLL_MIN_EMIT)
+                {
+                    _bottomHScrollAccum -= wheelDelta;
+                    _lastHScrollEmitMs = now;
+                    SendHWheel(wheelDelta);
+                }
             }
         }
 
@@ -1324,6 +1425,12 @@ namespace TouchpadGood
         public void Dispose()
         {
             ForceReleaseAll();
+            uint tid = _hookThreadId;
+            if (tid != 0)
+            {
+                PostThreadMessage(tid, WM_QUIT, IntPtr.Zero, IntPtr.Zero);
+                try { if (_hookThread != null) _hookThread.Join(300); } catch { }
+            }
         }
     }
 }
