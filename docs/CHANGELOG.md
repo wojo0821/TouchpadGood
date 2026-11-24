@@ -2,6 +2,24 @@
 
 All notable changes to **TouchpadGood** are documented per release below.
 
+## v1.0.6
+### What's New & Improvements
+- **Universal Smooth Real-Mouse Edge Scrolling (`±120 WHEEL_DELTA`)**: Both right-edge vertical scroll and bottom-edge horizontal scroll now emit authentic standard mouse `±120` wheel ticks via the zero-deadlock dedicated hook thread (`0` idle hooks, `0%` idle CPU), eliminating per-app stutter in classic Win32/WinForms/Office/Explorer apps and `TouchpadGoodSettings` itself.
+- **Windows 11 26H2 Live Kernel `TOUCHPAD_PARAMETERS_V3` Sync**: Live-disables Windows `singleFingerPanMode` (`0`) in the kernel while active (with V1 fallback and full restore on exit) and blocks competing OS wheel events during edge scrolling, completely eliminating scroll bounce-back/shuddering.
+- **Slimmer Edge Scroll Zones & Vertical Scroll Invert Toggle**: Tightened right-edge vertical strip to the outer `4.5%` (`x >= 0.955`) and bottom-edge horizontal strip to the outer `7.5%` (`y >= 0.925`), set natural vertical scrolling as the default, and added a 7-language **Invert vertical scroll direction** toggle in Settings.
+- **Improved 2-Finger Right-Click Tap Reliability**: Removed the stationary 1-finger `60ms` false `1+1` trigger (now requires real 1-finger movement `>= 0.012`) and added a 2-tier `55ms` net-displacement guard (`0.0085` early / `0.0060` late) so 2-finger right-click taps fire reliably while intentional drags stay snappy.
+- **Instant Administrator Elevation for Task Manager & Admin Windows**: Starting/restarting the driver from Settings or launching after Install/Auto-Update now runs the registered elevated Task Scheduler task (`schtasks /Run /TN "TouchpadGood"`) with zero UAC prompts so Task Manager and other elevated windows drag immediately.
+- **Sub-Pixel Wheel Accumulation in `FluentScrollPanel`**: Fixed `TouchpadGoodSettings.exe` dropping fractional high-resolution touchpad wheel deltas (`delta / 120`).
+
+### 변경 사항 (한국어)
+- **모든 프로그램에서 마우스처럼 부드러운 가장자리 스크롤 (`±120` 표준 휠)**: 우측 세로 스크롤과 하단 가로 스크롤 모두 데드락 없는 전용 후크 스레드(평상시 후크 0개·대기 CPU 0%)로 실제 마우스 표준 `±120` 휠 신호를 전송해, `TouchpadGoodSettings`를 비롯한 모든 프로그램에서 끊김 없이 작동합니다.
+- **Windows 11 26H2 커널 `TOUCHPAD_PARAMETERS_V3` 실시간 동기화**: OS 내장 `SingleFingerPanMode`를 커널에서 실시간 해제(종료·복구 시 원상 복원)하고 중복 OS 휠 신호를 차단해 스크롤 시 되돌아오며 떨리는 현상을 완전히 제거했습니다.
+- **가장자리 스크롤 폭 슬림화 & 세로 스크롤 방향 반전 스위치**: 우측 4.5%(`x >= 0.955`)·하단 7.5%(`y >= 0.925`)로 가장자리 판정을 정밀하게 좁히고, 자연 스크롤을 기본값으로 적용하며 7개 국어 설정 창에 **세로 스크롤 방향 반전** 토글을 추가했습니다.
+- **2손가락 탭 우클릭 판정 개선**: 정지 1손가락의 `1+1` 오인 버그를 제거하고 2단계(`55ms`) 순수 이동 거리 가드를 적용해 우클릭 탭 성공률과 드래그 반응성의 균형을 맞췄습니다.
+- **작업 관리자 등 관리자 창 드래그 즉시 지원**: 설정 창 시작/관리자 재시작 및 설치·업데이트 직후 작업 스케줄러를 통해 UAC 창 없이 즉시 관리자 권한으로 실행되도록 개선했습니다.
+
+---
+
 ## v1.0.5
 ### What's New
 - **Right & Bottom Scroll-Edge 2-Finger Pinch-to-Zoom**: Pinch or spread two fingers inside the right-edge (`midX >= 0.78`) or bottom-edge (`midY >= 0.76`) scroll zones to zoom in/out (`Ctrl + Wheel`).

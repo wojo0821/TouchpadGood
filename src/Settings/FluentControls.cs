@@ -839,6 +839,7 @@ namespace TouchpadGood
         private readonly Panel _content;
         private int _contentHeight;
         private int _scrollY;
+        private double _wheelAccum;
         private bool _hoverBar;
         private bool _draggingBar;
         private int _dragStartMouseY;
@@ -933,8 +934,15 @@ namespace TouchpadGood
                     if (RectangleToScreen(ClientRectangle).Contains(pt))
                     {
                         int delta = (short)((m.WParam.ToInt64() >> 16) & 0xFFFF);
-                        int step = (int)Math.Round(46 * _scale);
-                        SetScrollY(_scrollY - (delta / 120) * step);
+                        if ((delta > 0 && _wheelAccum < 0) || (delta < 0 && _wheelAccum > 0))
+                            _wheelAccum = 0;
+                        _wheelAccum += (delta / 120.0) * (54.0 * _scale);
+                        int movePx = (int)Math.Truncate(_wheelAccum);
+                        if (movePx != 0)
+                        {
+                            _wheelAccum -= movePx;
+                            SetScrollY(_scrollY - movePx);
+                        }
                         return true;
                     }
                 }

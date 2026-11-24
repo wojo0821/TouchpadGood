@@ -30,17 +30,24 @@ namespace TouchpadGood
 
         private const int WH_MOUSE_LL = 14;
         private const int WM_MOUSEMOVE = 0x0200;
+        private const int WM_MOUSEWHEEL = 0x020A;
+        private const int WM_MOUSEHWHEEL = 0x020E;
         private const uint WM_QUIT = 0x0012;
         private const uint WM_APP_HOOK_ON = 0x8001;
         private const uint WM_APP_HOOK_OFF = 0x8002;
 
-        private const double BOTTOM_EDGE_Y_START = 0.82;
-        private const double BOTTOM_EDGE_Y_CANCEL = 0.72;
-        private const double BOTTOM_EDGE_X_MAX = 0.88;
+        // Right-edge vertical scroll & Bottom-edge horizontal scroll (real-mouse ±120 WHEEL_DELTA, zero-deadlock dedicated hook thread)
+        private const double RIGHT_EDGE_X_START = 0.955;
+        private const double RIGHT_EDGE_X_CANCEL = 0.89;
+        private const double RIGHT_VSCROLL_TRIGGER_Y = 0.0035;
+        private const double RIGHT_VSCROLL_NOTCHES_PER_HEIGHT = 18.0;
+        private const double RIGHT_VSCROLL_INTERVAL_MS = 16.0;
+
+        private const double BOTTOM_EDGE_Y_START = 0.925;
+        private const double BOTTOM_EDGE_Y_CANCEL = 0.84;
         private const double BOTTOM_HSCROLL_TRIGGER_X = 0.0045;
-        private const double BOTTOM_HSCROLL_UNITS_PER_WIDTH = 2000.0;
-        private const double BOTTOM_HSCROLL_INTERVAL_MS = 14.0;
-        private const int BOTTOM_HSCROLL_MIN_EMIT = 6;
+        private const double BOTTOM_HSCROLL_NOTCHES_PER_WIDTH = 16.0;
+        private const double BOTTOM_HSCROLL_INTERVAL_MS = 20.0;
 
         // Right/Bottom scroll-edge 2-finger pinch-to-zoom
         private const double EDGE_PINCH_RIGHT_MID_X = 0.78;
@@ -53,11 +60,13 @@ namespace TouchpadGood
         private static readonly double TicksToMs = 1000.0 / Stopwatch.Frequency;
         private static readonly int InputSize = sizeof(INPUT);
 
-        private const double STATIONARY_HOLD_MS = 165.0;
-        private const double ONE_ESTABLISH_MS = 60.0;
-        private const double ONE_ESTABLISH_TRAVEL = 0.0065;
+        private const double STATIONARY_HOLD_MS = 175.0;
+        private const double ONE_ESTABLISH_TRAVEL = 0.0120;
         private const double DRAG_MOVE_THRESHOLD = 0.0020;
-        private const double TAP_MAX_MS = 220.0;
+        private const double FRESH_DRAG_EARLY_NET_THRESHOLD = 0.0085;
+        private const double FRESH_DRAG_LATE_NET_THRESHOLD = 0.0060;
+        private const double FRESH_DRAG_EARLY_WINDOW_MS = 55.0;
+        private const double TAP_MAX_MS = 240.0;
         private const double TAP_MAX_TRAVEL = 0.035;
         private const double POST_DRAG_NO_TAP_MS = 110.0;
         private const double ADS_FIRST_TRIGGER_DWELL_MS = 32.0;
@@ -200,6 +209,7 @@ namespace TouchpadGood
         private double _multiStartMs;
         private double _lastCountChangeMs;
         private double _accumTravel;
+        private double _multiNetDx, _multiNetDy;
 
         // 1-finger tracking & aiming finger lock
         private double _oneStartMs;
@@ -261,9 +271,13 @@ namespace TouchpadGood
 
         private bool _bottomScrollCandidate;
         private bool _bottomScrollActive;
+        private bool _rightScrollCandidate;
+        private bool _rightScrollActive;
         private double _bottomStartX, _bottomStartY;
         private double _bottomHScrollAccum;
         private double _lastHScrollEmitMs;
+        private double _rightVScrollAccum;
+        private double _lastVScrollEmitMs;
         private POINT _bottomAnchorPt;
 
         // Right/Bottom edge scroll-zone 2-finger pinch-to-zoom state
@@ -384,13 +398,16 @@ namespace TouchpadGood
 
         private IntPtr OnLowLevelMouseHook(int nCode, IntPtr wParam, IntPtr lParam)
         {
-            if (nCode >= 0 && _suppressMouseMove && wParam.ToInt32() == WM_MOUSEMOVE)
+            if (nCode >= 0 && _suppressMouseMove)
             {
-                MSLLHOOKSTRUCT* ms = (MSLLHOOKSTRUCT*)lParam;
-                // NOTE: Windows Precision Touchpad cursor moves carry LLMHF_INJECTED!
-                // Block all non-TouchpadGood WM_MOUSEMOVE while actively scrolling on the bottom edge.
-                if (ms->dwExtraInfo != ExtraInfoPtr)
-                    return new IntPtr(1);
+                int msg = wParam.ToInt32();
+                if (msg == WM_MOUSEMOVE || msg == WM_MOUSEWHEEL || msg == WM_MOUSEHWHEEL)
+                {
+                    MSLLHOOKSTRUCT* ms = (MSLLHOOKSTRUCT*)lParam;
+                    // Block all non-TouchpadGood cursor moves AND any competing OS PTP wheel events while edge-scrolling/zooming!
+                    if (ms->dwExtraInfo != ExtraInfoPtr)
+                        return new IntPtr(1);
+                }
             }
             return CallNextHookEx(_mouseHook, nCode, wParam, lParam);
         }
@@ -418,8 +435,12 @@ namespace TouchpadGood
         {
             _bottomScrollCandidate = false;
             _bottomScrollActive = false;
+            _rightScrollCandidate = false;
+            _rightScrollActive = false;
             _bottomHScrollAccum = 0;
             _lastHScrollEmitMs = 0;
+            _rightVScrollAccum = 0;
+            _lastVScrollEmitMs = 0;
             if (!_edgePinchActive)
                 SetTempMouseSuppression(false);
         }
@@ -430,7 +451,7 @@ namespace TouchpadGood
             _edgePinchActive = false;
             _pinchAccum = 0;
             _lastPinchEmitMs = 0;
-            if (!_bottomScrollActive)
+            if (!_bottomScrollActive && !_rightScrollActive)
                 SetTempMouseSuppression(false);
         }
 
@@ -466,7 +487,7 @@ namespace TouchpadGood
 
         public void OnNativeMouseMove(int dx, int dy, double now)
         {
-            if (!_config.Enabled || _bottomScrollActive || _edgePinchActive) return;
+            if (!_config.Enabled || _bottomScrollActive || _rightScrollActive || _edgePinchActive) return;
 
             if (_bridgingOne)
             {
@@ -666,9 +687,12 @@ namespace TouchpadGood
                     _calNativeY = 0;
 
                     CancelBottomEdgeScroll();
-                    if (_config.EnableBottomEdgeHScroll && cny >= BOTTOM_EDGE_Y_START && cnx < BOTTOM_EDGE_X_MAX)
+                    bool onRight = (cnx >= RIGHT_EDGE_X_START);
+                    bool onBottom = (_config.EnableBottomEdgeHScroll && cny >= BOTTOM_EDGE_Y_START);
+                    if (onRight || onBottom)
                     {
-                        _bottomScrollCandidate = true;
+                        _rightScrollCandidate = onRight;
+                        _bottomScrollCandidate = onBottom;
                         _bottomStartX = cnx;
                         _bottomStartY = cny;
                         GetCursorPos(out _bottomAnchorPt);
@@ -689,6 +713,8 @@ namespace TouchpadGood
                     _branch = Branch.None;
                     _peakFingers = 0;
                     _accumTravel = 0;
+                    _multiNetDx = 0;
+                    _multiNetDy = 0;
                     _enteredFromMovingOne = false;
                     _pressedButtonInSession = false;
                     _cooldownUntilLift = false;
@@ -709,27 +735,20 @@ namespace TouchpadGood
                 {
                     _cooldownUntilLift = false;
 
-                    if (_bottomScrollCandidate && !_suppressedByPhysBtn)
+                    if ((_rightScrollCandidate || _bottomScrollCandidate) && !_suppressedByPhysBtn)
                     {
-                        if (!_bottomScrollActive)
+                        if (_rightScrollActive)
                         {
-                            double adx = Math.Abs(cnx - _bottomStartX);
-                            double ady = Math.Abs(cny - _bottomStartY);
-                            if (cny < BOTTOM_EDGE_Y_CANCEL || (ady >= 0.012 && ady >= adx * 0.9))
+                            if (matched == 1)
                             {
-                                CancelBottomEdgeScroll();
+                                double ndy = sumDy / maxY;
+                                if (Math.Abs(ndy) < 0.35)
+                                    EmitRightVScrollDelta(ndy, now);
                             }
-                            else if (adx >= BOTTOM_HSCROLL_TRIGGER_X && adx > ady * 1.3)
-                            {
-                                _bottomScrollActive = true;
-                                _lastHScrollEmitMs = 0;
-                                SetTempMouseSuppression(true);
-                                EmitBottomHScrollDelta(cnx - _bottomStartX, now);
-                                RescheduleTimer(now);
-                                return;
-                            }
+                            RescheduleTimer(now);
+                            return;
                         }
-                        else
+                        if (_bottomScrollActive)
                         {
                             if (matched == 1)
                             {
@@ -737,6 +756,40 @@ namespace TouchpadGood
                                 if (Math.Abs(ndx) < 0.35)
                                     EmitBottomHScrollDelta(ndx, now);
                             }
+                            RescheduleTimer(now);
+                            return;
+                        }
+
+                        double adx = Math.Abs(cnx - _bottomStartX);
+                        double ady = Math.Abs(cny - _bottomStartY);
+
+                        if (_rightScrollCandidate && (cnx < RIGHT_EDGE_X_CANCEL || (adx >= 0.012 && adx >= ady * 0.9 && !_bottomScrollCandidate)))
+                            _rightScrollCandidate = false;
+                        if (_bottomScrollCandidate && (cny < BOTTOM_EDGE_Y_CANCEL || (ady >= 0.012 && ady >= adx * 0.9 && !_rightScrollCandidate)))
+                            _bottomScrollCandidate = false;
+
+                        if (_rightScrollCandidate && ady >= RIGHT_VSCROLL_TRIGGER_Y && ady > adx * 1.25)
+                        {
+                            _rightScrollActive = true;
+                            _bottomScrollCandidate = false;
+                            _lastVScrollEmitMs = 0;
+                            double dirSign = _config.InvertVerticalScroll ? -1.0 : 1.0;
+                            double initDir = ((cny >= _bottomStartY) ? 1.0 : -1.0) * dirSign;
+                            _rightVScrollAccum = initDir * 0.70;
+                            SetTempMouseSuppression(true);
+                            EmitRightVScrollDelta(cny - _bottomStartY, now);
+                            RescheduleTimer(now);
+                            return;
+                        }
+                        if (_bottomScrollCandidate && adx >= BOTTOM_HSCROLL_TRIGGER_X && adx > ady * 1.25)
+                        {
+                            _bottomScrollActive = true;
+                            _rightScrollCandidate = false;
+                            _lastHScrollEmitMs = 0;
+                            double initDir = (cnx >= _bottomStartX) ? 1.0 : -1.0;
+                            _bottomHScrollAccum = initDir * 0.65;
+                            SetTempMouseSuppression(true);
+                            EmitBottomHScrollDelta(cnx - _bottomStartX, now);
                             RescheduleTimer(now);
                             return;
                         }
@@ -751,7 +804,7 @@ namespace TouchpadGood
                         if (d < 0.45)
                         {
                             _oneTravel += d;
-                            if (!_oneEstablished && (_oneTravel >= ONE_ESTABLISH_TRAVEL || (now - _oneStartMs) >= ONE_ESTABLISH_MS))
+                            if (!_oneEstablished && _oneTravel >= ONE_ESTABLISH_TRAVEL)
                                 _oneEstablished = true;
                         }
 
@@ -759,15 +812,11 @@ namespace TouchpadGood
                         {
                             ApplyBridgeMove(sumDx, sumDy, maxX, frame.PhysMaxX, frame.PhysMaxY, maxY, 0.45);
                         }
-                        else if (!_bridgingOne && !_suppressedByPhysBtn && !_bottomScrollCandidate && (now - _oneStartMs) >= 55.0)
+                        else if (!_bridgingOne && !_suppressedByPhysBtn && !_bottomScrollCandidate && !_rightScrollCandidate && (now - _oneStartMs) >= 55.0)
                         {
                             _calTouchX += Math.Abs(sumDx);
                             _calTouchY += Math.Abs(sumDy);
                         }
-                    }
-                    else if (!_oneEstablished && (now - _oneStartMs) >= ONE_ESTABLISH_MS)
-                    {
-                        _oneEstablished = true;
                     }
                 }
 
@@ -775,7 +824,7 @@ namespace TouchpadGood
                 return;
             }
 
-            if (_bottomScrollCandidate || _bottomScrollActive)
+            if (_bottomScrollCandidate || _bottomScrollActive || _rightScrollCandidate || _rightScrollActive)
                 CancelBottomEdgeScroll();
 
             if (_suppressedByPhysBtn)
@@ -796,6 +845,8 @@ namespace TouchpadGood
                 _lastCountChangeMs = now;
                 _peakFingers = count;
                 _accumTravel = 0;
+                _multiNetDx = 0;
+                _multiNetDy = 0;
                 _pressedButtonInSession = false;
                 _cooldownUntilLift = false;
                 _rightDragLatched = false;
@@ -975,6 +1026,8 @@ namespace TouchpadGood
                         if (_config.LockPointerToAimFinger && !_enteredFromMovingOne)
                             _primaryAimId = PickIndexFingerId(frame.Contacts, count, maxX, maxY);
                         _accumTravel = 0;
+                        _multiNetDx = 0;
+                        _multiNetDy = 0;
                         _pendingResolve = (_config.ThreeFingerDrag != DragAction.None);
                     }
                     else if (count >= 4)
@@ -1108,6 +1161,8 @@ namespace TouchpadGood
             if (_activeDrag == DragAction.None)
             {
                 _accumTravel += dist;
+                _multiNetDx += normDx;
+                _multiNetDy += normDy;
                 if (_pendingResolve)
                     TryResolvePending(now, count);
 
@@ -1151,8 +1206,16 @@ namespace TouchpadGood
             else if (_branch == Branch.Fresh3) tapAct = _config.ThreeFingerTap;
 
             bool immediateAfterStagger = (_enteredFromMovingOne && (tapAct == ClickAction.None || IsSameButton(dragAct, tapAct)));
+            bool needTapGuard = (!_enteredFromMovingOne && tapAct != ClickAction.None && !IsSameButton(dragAct, tapAct));
+            double netDist = Math.Sqrt(_multiNetDx * _multiNetDx + _multiNetDy * _multiNetDy);
+            double freshThreshold = (since < FRESH_DRAG_EARLY_WINDOW_MS)
+                ? FRESH_DRAG_EARLY_NET_THRESHOLD
+                : FRESH_DRAG_LATE_NET_THRESHOLD;
+            bool movedEnough = needTapGuard
+                ? (netDist >= freshThreshold)
+                : (_accumTravel >= DRAG_MOVE_THRESHOLD);
 
-            if (immediateAfterStagger || _accumTravel >= DRAG_MOVE_THRESHOLD || since >= STATIONARY_HOLD_MS)
+            if (immediateAfterStagger || movedEnough || since >= STATIONARY_HOLD_MS)
             {
                 StartDrag(dragAct, count == 3, now);
                 _pressedButtonInSession = true;
@@ -1167,11 +1230,12 @@ namespace TouchpadGood
             double dt = now - _multiStartMs;
             if (dt < 0 || dt > TAP_MAX_MS) return;
 
+            double netDist = Math.Sqrt(_multiNetDx * _multiNetDx + _multiNetDy * _multiNetDy);
             ClickAction act = ClickAction.None;
             if (_branch == Branch.OnePlusOne) act = _config.OnePlusOneTap;
             else if (_branch == Branch.OnePlusTwo) act = _config.OnePlusTwoTap;
-            else if (_branch == Branch.Fresh2 && _peakFingers == 2 && _accumTravel <= TAP_MAX_TRAVEL) act = _config.TwoFingerTap;
-            else if (_branch == Branch.Fresh3 && _peakFingers == 3 && _accumTravel <= TAP_MAX_TRAVEL) act = _config.ThreeFingerTap;
+            else if (_branch == Branch.Fresh2 && _peakFingers == 2 && netDist <= TAP_MAX_TRAVEL) act = _config.TwoFingerTap;
+            else if (_branch == Branch.Fresh3 && _peakFingers == 3 && netDist <= TAP_MAX_TRAVEL) act = _config.ThreeFingerTap;
 
             if (act == ClickAction.LeftClick)
                 FireTimedClick(MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, ref _leftDown, ref _pendingLeftUpMs, ref _leftDownMs, now);
@@ -1500,6 +1564,8 @@ namespace TouchpadGood
             _prevCount = 0;
             _peakFingers = 0;
             _accumTravel = 0;
+            _multiNetDx = 0;
+            _multiNetDy = 0;
             _oneTravel = 0;
             _oneEstablished = false;
             _primaryAimId = -1;
@@ -1579,17 +1645,71 @@ namespace TouchpadGood
             SendInput(3, batch, InputSize);
         }
 
+        private void EmitRightVScrollDelta(double ndy, double now)
+        {
+            if (ndy == 0.0) return;
+
+            // Default (InvertVerticalScroll == false): natural direction (slide DOWN -> +120, slide UP -> -120)
+            // Inverted (InvertVerticalScroll == true): classic direction (slide DOWN -> -120, slide UP -> +120)
+            double dirSign = _config.InvertVerticalScroll ? -1.0 : 1.0;
+            double signedNotch = ndy * RIGHT_VSCROLL_NOTCHES_PER_HEIGHT * dirSign;
+
+            // Instant direction reversal
+            if ((signedNotch > 0 && _rightVScrollAccum < 0) || (signedNotch < 0 && _rightVScrollAccum > 0))
+                _rightVScrollAccum = 0;
+
+            _rightVScrollAccum += signedNotch;
+
+            if (_rightVScrollAccum > 1.5) _rightVScrollAccum = 1.5;
+            else if (_rightVScrollAccum < -1.5) _rightVScrollAccum = -1.5;
+
+            if (_lastVScrollEmitMs == 0 || (now - _lastVScrollEmitMs) >= RIGHT_VSCROLL_INTERVAL_MS)
+            {
+                if (Math.Abs(_rightVScrollAccum) >= 1.0)
+                {
+                    int sign = _rightVScrollAccum > 0 ? 1 : -1;
+                    _rightVScrollAccum -= sign;
+                    _lastVScrollEmitMs = now;
+                    SendVWheel(sign * WHEEL_DELTA);
+                }
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void SendVWheel(int delta)
+        {
+            INPUT inp = new INPUT();
+            inp.type = INPUT_MOUSE;
+            inp.u.mi.mouseData = unchecked((uint)delta);
+            inp.u.mi.dwFlags = MOUSEEVENTF_WHEEL;
+            inp.u.mi.dwExtraInfo = ExtraInfoPtr;
+            SendInput(1, &inp, InputSize);
+        }
+
         private void EmitBottomHScrollDelta(double ndx, double now)
         {
-            _bottomHScrollAccum += ndx * BOTTOM_HSCROLL_UNITS_PER_WIDTH;
+            if (ndx == 0.0) return;
+
+            // Instant direction reversal: don't make the user unwind leftover opposite-direction remainder
+            if ((ndx > 0 && _bottomHScrollAccum < 0) || (ndx < 0 && _bottomHScrollAccum > 0))
+                _bottomHScrollAccum = 0;
+
+            _bottomHScrollAccum += ndx * BOTTOM_HSCROLL_NOTCHES_PER_WIDTH;
+
+            // Clamp accumulator so rapid swipes never queue up trailing scroll ticks after finger lift
+            if (_bottomHScrollAccum > 1.5) _bottomHScrollAccum = 1.5;
+            else if (_bottomHScrollAccum < -1.5) _bottomHScrollAccum = -1.5;
+
             if (_lastHScrollEmitMs == 0 || (now - _lastHScrollEmitMs) >= BOTTOM_HSCROLL_INTERVAL_MS)
             {
-                int wheelDelta = (int)Math.Truncate(_bottomHScrollAccum);
-                if (Math.Abs(wheelDelta) >= BOTTOM_HSCROLL_MIN_EMIT)
+                if (Math.Abs(_bottomHScrollAccum) >= 1.0)
                 {
-                    _bottomHScrollAccum -= wheelDelta;
+                    int sign = _bottomHScrollAccum > 0 ? 1 : -1;
+                    _bottomHScrollAccum -= sign;
                     _lastHScrollEmitMs = now;
-                    SendHWheel(wheelDelta);
+                    // Exact standard mouse WHEEL_DELTA (±120) so ALL Windows apps (Win32, Excel, Explorer, Chrome, VS Code, etc.)
+                    // handle it identically to a real horizontal mouse wheel without dropping sub-120 deltas!
+                    SendHWheel(sign * WHEEL_DELTA);
                 }
             }
         }

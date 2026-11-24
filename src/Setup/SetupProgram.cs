@@ -569,7 +569,7 @@ namespace TouchpadGood
             }
             catch { }
 
-            try { Process.Start(drvPath); } catch { }
+            StartDriverViaTaskOrDirect(drvPath);
             Thread.Sleep(200);
             try { Process.Start(setPath); } catch { }
         }
@@ -641,10 +641,52 @@ namespace TouchpadGood
 
             if (optLaunch)
             {
-                try { Process.Start(drvPath); } catch { }
+                StartDriverViaTaskOrDirect(drvPath);
                 Thread.Sleep(180);
                 try { Process.Start(setPath); } catch { }
             }
+        }
+
+        private static void StartDriverViaTaskOrDirect(string drvPath)
+        {
+            try
+            {
+                var q = new ProcessStartInfo
+                {
+                    FileName = "schtasks.exe",
+                    Arguments = "/Query /TN \"" + AppMeta.AppName + "\"",
+                    CreateNoWindow = true,
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                };
+                bool hasTask = false;
+                using (var p = Process.Start(q))
+                {
+                    p.WaitForExit(2000);
+                    hasTask = (p.ExitCode == 0);
+                }
+
+                if (hasTask)
+                {
+                    var run = new ProcessStartInfo
+                    {
+                        FileName = "schtasks.exe",
+                        Arguments = "/Run /TN \"" + AppMeta.AppName + "\"",
+                        CreateNoWindow = true,
+                        UseShellExecute = false,
+                        WindowStyle = ProcessWindowStyle.Hidden
+                    };
+                    using (var p = Process.Start(run))
+                    {
+                        p.WaitForExit(2500);
+                        if (p.ExitCode == 0) return;
+                    }
+                }
+            }
+            catch { }
+
+            try { Process.Start(drvPath); } catch { }
         }
 
         private void PerformUninstall()

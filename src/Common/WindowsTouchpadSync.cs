@@ -49,6 +49,27 @@ namespace TouchpadGood
             public uint rightClickZoneHeight;
         }
 
+        [StructLayout(LayoutKind.Sequential)]
+        private struct TOUCHPAD_PARAMETERS_V3
+        {
+            public uint versionNumber;
+            public uint maxSupportedContacts;
+            public uint legacyTouchpadFeatures;
+            public uint flags1;
+            public uint flags2;
+            public uint sensitivityLevel;
+            public uint cursorSpeed;
+            public uint feedbackIntensity;
+            public uint clickForceSensitivity;
+            public uint rightClickZoneWidth;
+            public uint rightClickZoneHeight;
+            public uint flags3;
+            public uint flags4;
+            public uint panSensitivity;
+            public uint zoomSensitivity;
+            public uint singleFingerPanMode;
+        }
+
         [DllImport("user32.dll", SetLastError = true)]
         private static extern bool SystemParametersInfo(uint uiAction, uint uiParam, int[] pvParam, uint fWinIni);
 
@@ -60,6 +81,9 @@ namespace TouchpadGood
 
         [DllImport("user32.dll", SetLastError = true, EntryPoint = "SystemParametersInfo")]
         private static extern bool SystemParametersInfoTouchpad(uint uiAction, uint uiParam, ref TOUCHPAD_PARAMETERS_V1 pvParam, uint fWinIni);
+
+        [DllImport("user32.dll", SetLastError = true, EntryPoint = "SystemParametersInfo")]
+        private static extern bool SystemParametersInfoTouchpadV3(uint uiAction, uint uiParam, ref TOUCHPAD_PARAMETERS_V3 pvParam, uint fWinIni);
 
         [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
         private static extern IntPtr SendMessageTimeout(
@@ -218,31 +242,6 @@ namespace TouchpadGood
                     RestoreMouseFromBackup();
                 }
 
-                try
-                {
-                    var tp = new TOUCHPAD_PARAMETERS_V1 { versionNumber = 1 };
-                    uint sz = (uint)Marshal.SizeOf(typeof(TOUCHPAD_PARAMETERS_V1));
-                    if (SystemParametersInfoTouchpad(SPI_GETTOUCHPADPARAMETERS, sz, ref tp, 0))
-                    {
-                        tp.sensitivityLevel = 0;
-
-                        uint f2 = tp.flags2;
-                        if (forceFullRecommended)
-                            f2 = SetBit(f2, FLAG2_ALLOW_WITH_MOUSE, true);
-                        f2 = SetBit(f2, FLAG2_TAP_ENABLED, true);
-                        f2 = SetBit(f2, FLAG2_TAP_AND_DRAG_ENABLED, false);
-                        f2 = SetBit(f2, FLAG2_TWO_FINGER_TAP_ENABLED, native2F);
-                        f2 = SetBit(f2, FLAG2_RIGHT_CLICK_ZONE, false);
-                        f2 = SetBit(f2, FLAG2_PAN_ENABLED, native2F);
-                        f2 = SetBit(f2, FLAG2_ZOOM_ENABLED, native2F);
-                        f2 = SetBit(f2, FLAG2_HONOR_MOUSE_ACCEL, cfg.DisableAccel || forceFullRecommended);
-                        tp.flags2 = f2;
-
-                        SystemParametersInfoTouchpad(SPI_SETTOUCHPADPARAMETERS, sz, ref tp, SPIF_UPDATEINIFILE | SPIF_SENDCHANGE);
-                    }
-                }
-                catch { }
-
                 using (var key = Registry.CurrentUser.CreateSubKey(PtpRegPath))
                 {
                     if (key != null)
@@ -250,13 +249,10 @@ namespace TouchpadGood
                         key.SetValue("AAPThreshold", 0, RegistryValueKind.DWord);
                         key.SetValue("HonorMouseAccelSetting", (cfg.DisableAccel || forceFullRecommended) ? 1 : 0, RegistryValueKind.DWord);
                         key.SetValue("EnableEdgy", 0, RegistryValueKind.DWord);
-                        key.SetValue("EdgeAutoPanningEnabled", 1, RegistryValueKind.DWord);
-                        key.SetValue("BoostedPanningEnabled", 1, RegistryValueKind.DWord);
-                        if (forceFullRecommended)
-                        {
-                            // Enable Windows 11 native right-edge single-finger scroll
-                            key.SetValue("SingleFingerPanMode", 2, RegistryValueKind.DWord);
-                        }
+                        key.SetValue("EdgeAutoPanningEnabled", 0, RegistryValueKind.DWord);
+                        key.SetValue("BoostedPanningEnabled", 0, RegistryValueKind.DWord);
+                        // Disable Windows fractional SingleFingerPanMode BEFORE SPI_SETTOUCHPADPARAMETERS so OS unloads it live
+                        key.SetValue("SingleFingerPanMode", 0, RegistryValueKind.DWord);
 
                         key.SetValue("TapsEnabled", 1, RegistryValueKind.DWord);
                         key.SetValue("TapAndDrag", 0, RegistryValueKind.DWord);
@@ -270,6 +266,55 @@ namespace TouchpadGood
                         key.SetValue("FourFingerTapEnabled", 1, RegistryValueKind.DWord);
                     }
                 }
+
+                try
+                {
+                    bool setViaV3 = false;
+                    var tp3 = new TOUCHPAD_PARAMETERS_V3 { versionNumber = 3 };
+                    uint sz3 = (uint)Marshal.SizeOf(typeof(TOUCHPAD_PARAMETERS_V3));
+                    if (SystemParametersInfoTouchpadV3(SPI_GETTOUCHPADPARAMETERS, sz3, ref tp3, 0))
+                    {
+                        tp3.sensitivityLevel = 0;
+                        uint f2 = tp3.flags2;
+                        if (forceFullRecommended)
+                            f2 = SetBit(f2, FLAG2_ALLOW_WITH_MOUSE, true);
+                        f2 = SetBit(f2, FLAG2_TAP_ENABLED, true);
+                        f2 = SetBit(f2, FLAG2_TAP_AND_DRAG_ENABLED, false);
+                        f2 = SetBit(f2, FLAG2_TWO_FINGER_TAP_ENABLED, native2F);
+                        f2 = SetBit(f2, FLAG2_RIGHT_CLICK_ZONE, false);
+                        f2 = SetBit(f2, FLAG2_PAN_ENABLED, native2F);
+                        f2 = SetBit(f2, FLAG2_ZOOM_ENABLED, native2F);
+                        f2 = SetBit(f2, FLAG2_HONOR_MOUSE_ACCEL, cfg.DisableAccel || forceFullRecommended);
+                        tp3.flags2 = f2;
+                        tp3.singleFingerPanMode = 0; // Disable Windows 11 26H2 OS single-finger edge pan LIVE so TouchpadGood real-mouse scroll never fights OS!
+
+                        setViaV3 = SystemParametersInfoTouchpadV3(SPI_SETTOUCHPADPARAMETERS, sz3, ref tp3, SPIF_UPDATEINIFILE | SPIF_SENDCHANGE);
+                    }
+
+                    if (!setViaV3)
+                    {
+                        var tp = new TOUCHPAD_PARAMETERS_V1 { versionNumber = 1 };
+                        uint sz = (uint)Marshal.SizeOf(typeof(TOUCHPAD_PARAMETERS_V1));
+                        if (SystemParametersInfoTouchpad(SPI_GETTOUCHPADPARAMETERS, sz, ref tp, 0))
+                        {
+                            tp.sensitivityLevel = 0;
+                            uint f2 = tp.flags2;
+                            if (forceFullRecommended)
+                                f2 = SetBit(f2, FLAG2_ALLOW_WITH_MOUSE, true);
+                            f2 = SetBit(f2, FLAG2_TAP_ENABLED, true);
+                            f2 = SetBit(f2, FLAG2_TAP_AND_DRAG_ENABLED, false);
+                            f2 = SetBit(f2, FLAG2_TWO_FINGER_TAP_ENABLED, native2F);
+                            f2 = SetBit(f2, FLAG2_RIGHT_CLICK_ZONE, false);
+                            f2 = SetBit(f2, FLAG2_PAN_ENABLED, native2F);
+                            f2 = SetBit(f2, FLAG2_ZOOM_ENABLED, native2F);
+                            f2 = SetBit(f2, FLAG2_HONOR_MOUSE_ACCEL, cfg.DisableAccel || forceFullRecommended);
+                            tp.flags2 = f2;
+
+                            SystemParametersInfoTouchpad(SPI_SETTOUCHPADPARAMETERS, sz, ref tp, SPIF_UPDATEINIFILE | SPIF_SENDCHANGE);
+                        }
+                    }
+                }
+                catch { }
 
                 NotifySettingsChanged();
             }
@@ -293,14 +338,17 @@ namespace TouchpadGood
                     bool pan = ReadRegInt(bak, "PanEnabled", 1) != 0;
                     bool zoom = ReadRegInt(bak, "ZoomEnabled", 1) != 0;
 
+                    int singlePan = ReadRegInt(bak, "SingleFingerPanMode", 0);
+
                     try
                     {
-                        var tp = new TOUCHPAD_PARAMETERS_V1 { versionNumber = 1 };
-                        uint sz = (uint)Marshal.SizeOf(typeof(TOUCHPAD_PARAMETERS_V1));
-                        if (SystemParametersInfoTouchpad(SPI_GETTOUCHPADPARAMETERS, sz, ref tp, 0))
+                        bool restoredV3 = false;
+                        var tp3 = new TOUCHPAD_PARAMETERS_V3 { versionNumber = 3 };
+                        uint sz3 = (uint)Marshal.SizeOf(typeof(TOUCHPAD_PARAMETERS_V3));
+                        if (SystemParametersInfoTouchpadV3(SPI_GETTOUCHPADPARAMETERS, sz3, ref tp3, 0))
                         {
-                            tp.sensitivityLevel = (uint)Math.Max(0, Math.Min(3, aap));
-                            uint f2 = tp.flags2;
+                            tp3.sensitivityLevel = (uint)Math.Max(0, Math.Min(3, aap));
+                            uint f2 = tp3.flags2;
                             f2 = SetBit(f2, FLAG2_TAP_ENABLED, tap);
                             f2 = SetBit(f2, FLAG2_TAP_AND_DRAG_ENABLED, tapDrag);
                             f2 = SetBit(f2, FLAG2_TWO_FINGER_TAP_ENABLED, twoTap);
@@ -308,8 +356,29 @@ namespace TouchpadGood
                             f2 = SetBit(f2, FLAG2_HONOR_MOUSE_ACCEL, honor);
                             f2 = SetBit(f2, FLAG2_PAN_ENABLED, pan);
                             f2 = SetBit(f2, FLAG2_ZOOM_ENABLED, zoom);
-                            tp.flags2 = f2;
-                            SystemParametersInfoTouchpad(SPI_SETTOUCHPADPARAMETERS, sz, ref tp, SPIF_UPDATEINIFILE | SPIF_SENDCHANGE);
+                            tp3.flags2 = f2;
+                            tp3.singleFingerPanMode = (uint)Math.Max(0, singlePan);
+                            restoredV3 = SystemParametersInfoTouchpadV3(SPI_SETTOUCHPADPARAMETERS, sz3, ref tp3, SPIF_UPDATEINIFILE | SPIF_SENDCHANGE);
+                        }
+
+                        if (!restoredV3)
+                        {
+                            var tp = new TOUCHPAD_PARAMETERS_V1 { versionNumber = 1 };
+                            uint sz = (uint)Marshal.SizeOf(typeof(TOUCHPAD_PARAMETERS_V1));
+                            if (SystemParametersInfoTouchpad(SPI_GETTOUCHPADPARAMETERS, sz, ref tp, 0))
+                            {
+                                tp.sensitivityLevel = (uint)Math.Max(0, Math.Min(3, aap));
+                                uint f2 = tp.flags2;
+                                f2 = SetBit(f2, FLAG2_TAP_ENABLED, tap);
+                                f2 = SetBit(f2, FLAG2_TAP_AND_DRAG_ENABLED, tapDrag);
+                                f2 = SetBit(f2, FLAG2_TWO_FINGER_TAP_ENABLED, twoTap);
+                                f2 = SetBit(f2, FLAG2_RIGHT_CLICK_ZONE, rcZone);
+                                f2 = SetBit(f2, FLAG2_HONOR_MOUSE_ACCEL, honor);
+                                f2 = SetBit(f2, FLAG2_PAN_ENABLED, pan);
+                                f2 = SetBit(f2, FLAG2_ZOOM_ENABLED, zoom);
+                                tp.flags2 = f2;
+                                SystemParametersInfoTouchpad(SPI_SETTOUCHPADPARAMETERS, sz, ref tp, SPIF_UPDATEINIFILE | SPIF_SENDCHANGE);
+                            }
                         }
                     }
                     catch { }

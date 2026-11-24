@@ -65,6 +65,7 @@ namespace TouchpadGood
         private Label _lblAccelTitle, _lblAccelSub;
         private Label _lblWinOptTitle, _lblWinOptSub;
         private Label _lblHScrollTitle, _lblHScrollSub;
+        private Label _lblInvVScrollTitle, _lblInvVScrollSub;
         private Label _lblPinchTitle, _lblPinchSub;
         private Label _lblAutoStartTitle, _lblAutoStartSub;
         private Label _lblSoundTitle, _lblSoundSub;
@@ -72,6 +73,7 @@ namespace TouchpadGood
         private FluentToggle _tgDisableAccel;
         private FluentButton _btnWinOpt;
         private FluentToggle _tgBottomHScroll;
+        private FluentToggle _tgInvertVScroll;
         private FluentToggle _tgEdgePinch;
         private FluentToggle _tgAutoStart;
         private FluentToggle _tgHotkeySound;
@@ -379,6 +381,7 @@ namespace TouchpadGood
             y = AddToggleCard(body, pad, y, cardW, out _lblAccelTitle, out _lblAccelSub, out _tgDisableAccel, (s, e) => ScheduleSave(true));
             y = AddActionCard(body, pad, y, cardW, out _lblWinOptTitle, out _lblWinOptSub, out _btnWinOpt, true, (s, e) => ApplyWindowsAutoOptimize());
             y = AddToggleCard(body, pad, y, cardW, out _lblHScrollTitle, out _lblHScrollSub, out _tgBottomHScroll, (s, e) => ScheduleSave(true));
+            y = AddToggleCard(body, pad, y, cardW, out _lblInvVScrollTitle, out _lblInvVScrollSub, out _tgInvertVScroll, (s, e) => ScheduleSave(true));
             y = AddToggleCard(body, pad, y, cardW, out _lblPinchTitle, out _lblPinchSub, out _tgEdgePinch, (s, e) => ScheduleSave(true));
             y = AddToggleCard(body, pad, y, cardW, out _lblAutoStartTitle, out _lblAutoStartSub, out _tgAutoStart, (s, e) =>
             {
@@ -714,6 +717,8 @@ namespace TouchpadGood
             _btnWinOpt.Text = L10n.T("btn_winopt");
             _lblHScrollTitle.Text = L10n.T("lbl_hscroll");
             _lblHScrollSub.Text = L10n.T("sub_hscroll");
+            _lblInvVScrollTitle.Text = L10n.T("lbl_inv_vscroll");
+            _lblInvVScrollSub.Text = L10n.T("sub_inv_vscroll");
             _lblPinchTitle.Text = L10n.T("lbl_pinch");
             _lblPinchSub.Text = L10n.T("sub_pinch");
             _lblAutoStartTitle.Text = L10n.T("lbl_autostart");
@@ -765,6 +770,7 @@ namespace TouchpadGood
             _tgEnabled.Invalidate();
             _tgDisableAccel.Invalidate();
             _tgBottomHScroll.Invalidate();
+            _tgInvertVScroll.Invalidate();
             _tgEdgePinch.Invalidate();
             _tgAutoStart.Invalidate();
             _tgHotkeySound.Invalidate();
@@ -911,6 +917,7 @@ namespace TouchpadGood
             _tgEnabled.Checked = _config.Enabled;
             _tgDisableAccel.Checked = _config.DisableAccel;
             _tgBottomHScroll.Checked = _config.EnableBottomEdgeHScroll;
+            _tgInvertVScroll.Checked = _config.InvertVerticalScroll;
             _tgEdgePinch.Checked = _config.EnableEdgePinchZoom;
             _tgAutoStart.Checked = IsTaskRegistered();
             _tgHotkeySound.Checked = _config.HotkeySound;
@@ -966,6 +973,7 @@ namespace TouchpadGood
             _config.Enabled = _tgEnabled.Checked;
             _config.DisableAccel = _tgDisableAccel.Checked;
             _config.EnableBottomEdgeHScroll = _tgBottomHScroll.Checked;
+            _config.InvertVerticalScroll = _tgInvertVScroll.Checked;
             _config.EnableEdgePinchZoom = _tgEdgePinch.Checked;
             _config.HotkeySound = _tgHotkeySound.Checked;
 
@@ -1081,8 +1089,41 @@ namespace TouchpadGood
         {
             if (_config.Enabled && QueryDriverState() == 0 && File.Exists(DriverExePath))
             {
-                try { Process.Start(DriverExePath); } catch { }
+                StartDriverBestPrivilege();
             }
+        }
+
+        private static bool TryRunScheduledTask()
+        {
+            if (!IsScheduledTaskOnlyRegistered()) return false;
+            try
+            {
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "schtasks.exe",
+                    Arguments = "/Run /TN \"" + TaskName + "\"",
+                    CreateNoWindow = true,
+                    UseShellExecute = false,
+                    WindowStyle = ProcessWindowStyle.Hidden
+                };
+                using (var p = Process.Start(psi))
+                {
+                    p.WaitForExit(2500);
+                    return p.ExitCode == 0;
+                }
+            }
+            catch { return false; }
+        }
+
+        private static void StartDriverBestPrivilege()
+        {
+            if (TryRunScheduledTask()) return;
+            try
+            {
+                if (File.Exists(DriverExePath))
+                    Process.Start(DriverExePath);
+            }
+            catch { }
         }
 
         private void ToggleDriverProcess()
@@ -1096,12 +1137,8 @@ namespace TouchpadGood
             }
             else if (File.Exists(DriverExePath))
             {
-                try
-                {
-                    Process.Start(DriverExePath);
-                    SetFooter("footer_started");
-                }
-                catch { }
+                StartDriverBestPrivilege();
+                SetFooter("footer_started");
                 RefreshStatusLater();
             }
         }
@@ -1114,6 +1151,18 @@ namespace TouchpadGood
                 IntPtr drv = FindWindow(DriverWindowClass, null);
                 if (drv != IntPtr.Zero)
                     PostMessage(drv, WM_DRIVER_STOP, new IntPtr(1), IntPtr.Zero);
+
+                // If elevated Task Scheduler task is already registered, relaunch with ZERO UAC prompt!
+                if (IsScheduledTaskOnlyRegistered())
+                {
+                    Thread.Sleep(220);
+                    if (TryRunScheduledTask())
+                    {
+                        SetFooter("footer_admin_ok");
+                        RefreshStatusLater();
+                        return;
+                    }
+                }
 
                 var psi = new ProcessStartInfo
                 {
@@ -1175,7 +1224,7 @@ namespace TouchpadGood
             _btnAdmin.Invalidate();
         }
 
-        private static bool IsTaskRegistered()
+        private static bool IsScheduledTaskOnlyRegistered()
         {
             try
             {
@@ -1195,6 +1244,12 @@ namespace TouchpadGood
                 }
             }
             catch { }
+            return false;
+        }
+
+        private static bool IsTaskRegistered()
+        {
+            if (IsScheduledTaskOnlyRegistered()) return true;
 
             try
             {
@@ -1277,6 +1332,17 @@ namespace TouchpadGood
                     catch { }
 
                     SetFooter("footer_task_on");
+
+                    // Immediately promote running standard-user driver to elevated Administrator via the new task!
+                    if (QueryDriverState() == 1 && IsScheduledTaskOnlyRegistered())
+                    {
+                        IntPtr drv = FindWindow(DriverWindowClass, null);
+                        if (drv != IntPtr.Zero)
+                            PostMessage(drv, WM_DRIVER_STOP, new IntPtr(1), IntPtr.Zero);
+                        Thread.Sleep(220);
+                        TryRunScheduledTask();
+                        RefreshStatusLater();
+                    }
                 }
             }
             catch
