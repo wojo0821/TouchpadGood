@@ -38,6 +38,7 @@ Service Win32 pur en arrière-plan (`TouchpadGood.exe`) + Paramètres Fluent Des
 | **1 doigt déplacer / tap** | Natif Windows (1:1 linéaire, accélération OFF) |
 | **Défilement bord droit (1 doigt)** | Natif Windows 11 (`SingleFingerPanMode = 2`) |
 | **Défilement bord inférieur (1 doigt)** | Défilement horizontal fluide (`WM_MOUSEHWHEEL`, 0 hook au repos) |
+| **Pincement 2 doigts bord droit/inférieur** | Zoom avant / arrière (`Ctrl + Wheel`) |
 | **Glisser à 2 doigts** | Glisser gauche |
 | **Tap à 2 doigts (`0 → 2`)** | Clic droit |
 | **Mouvement 1 doigt + 1 tap (`1 → 2`)** | Clic gauche (maintenir = glisser gauche) |

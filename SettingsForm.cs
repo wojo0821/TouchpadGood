@@ -65,12 +65,14 @@ namespace TouchpadGood
         private Label _lblAccelTitle, _lblAccelSub;
         private Label _lblWinOptTitle, _lblWinOptSub;
         private Label _lblHScrollTitle, _lblHScrollSub;
+        private Label _lblPinchTitle, _lblPinchSub;
         private Label _lblAutoStartTitle, _lblAutoStartSub;
         private Label _lblSoundTitle, _lblSoundSub;
         private FluentToggle _tgEnabled;
         private FluentToggle _tgDisableAccel;
         private FluentButton _btnWinOpt;
         private FluentToggle _tgBottomHScroll;
+        private FluentToggle _tgEdgePinch;
         private FluentToggle _tgAutoStart;
         private FluentToggle _tgHotkeySound;
 
@@ -377,6 +379,7 @@ namespace TouchpadGood
             y = AddToggleCard(body, pad, y, cardW, out _lblAccelTitle, out _lblAccelSub, out _tgDisableAccel, (s, e) => ScheduleSave(true));
             y = AddActionCard(body, pad, y, cardW, out _lblWinOptTitle, out _lblWinOptSub, out _btnWinOpt, true, (s, e) => ApplyWindowsAutoOptimize());
             y = AddToggleCard(body, pad, y, cardW, out _lblHScrollTitle, out _lblHScrollSub, out _tgBottomHScroll, (s, e) => ScheduleSave(true));
+            y = AddToggleCard(body, pad, y, cardW, out _lblPinchTitle, out _lblPinchSub, out _tgEdgePinch, (s, e) => ScheduleSave(true));
             y = AddToggleCard(body, pad, y, cardW, out _lblAutoStartTitle, out _lblAutoStartSub, out _tgAutoStart, (s, e) =>
             {
                 if (!_isLoadingUi) ToggleAutoStartTask();
@@ -711,6 +714,8 @@ namespace TouchpadGood
             _btnWinOpt.Text = L10n.T("btn_winopt");
             _lblHScrollTitle.Text = L10n.T("lbl_hscroll");
             _lblHScrollSub.Text = L10n.T("sub_hscroll");
+            _lblPinchTitle.Text = L10n.T("lbl_pinch");
+            _lblPinchSub.Text = L10n.T("sub_pinch");
             _lblAutoStartTitle.Text = L10n.T("lbl_autostart");
             _lblAutoStartSub.Text = L10n.T("sub_autostart");
             _lblSoundTitle.Text = L10n.T("lbl_sound");
@@ -760,6 +765,7 @@ namespace TouchpadGood
             _tgEnabled.Invalidate();
             _tgDisableAccel.Invalidate();
             _tgBottomHScroll.Invalidate();
+            _tgEdgePinch.Invalidate();
             _tgAutoStart.Invalidate();
             _tgHotkeySound.Invalidate();
             _tgAdsLatch.Invalidate();
@@ -905,6 +911,7 @@ namespace TouchpadGood
             _tgEnabled.Checked = _config.Enabled;
             _tgDisableAccel.Checked = _config.DisableAccel;
             _tgBottomHScroll.Checked = _config.EnableBottomEdgeHScroll;
+            _tgEdgePinch.Checked = _config.EnableEdgePinchZoom;
             _tgAutoStart.Checked = IsTaskRegistered();
             _tgHotkeySound.Checked = _config.HotkeySound;
 
@@ -959,6 +966,7 @@ namespace TouchpadGood
             _config.Enabled = _tgEnabled.Checked;
             _config.DisableAccel = _tgDisableAccel.Checked;
             _config.EnableBottomEdgeHScroll = _tgBottomHScroll.Checked;
+            _config.EnableEdgePinchZoom = _tgEdgePinch.Checked;
             _config.HotkeySound = _tgHotkeySound.Checked;
 
             _config.TwoFingerDrag = (DragAction)Math.Max(0, _cb2Drag.SelectedIndex);

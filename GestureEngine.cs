@@ -14,6 +14,7 @@ namespace TouchpadGood
     public sealed unsafe class GestureEngine : IDisposable
     {
         private const uint INPUT_MOUSE = 0;
+        private const uint INPUT_KEYBOARD = 1;
         private const uint MOUSEEVENTF_MOVE = 0x0001;
         private const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
         private const uint MOUSEEVENTF_LEFTUP = 0x0004;
@@ -21,7 +22,11 @@ namespace TouchpadGood
         private const uint MOUSEEVENTF_RIGHTUP = 0x0010;
         private const uint MOUSEEVENTF_MIDDLEDOWN = 0x0020;
         private const uint MOUSEEVENTF_MIDDLEUP = 0x0040;
+        private const uint MOUSEEVENTF_WHEEL = 0x0800;
         private const uint MOUSEEVENTF_HWHEEL = 0x01000;
+        private const uint KEYEVENTF_KEYUP = 0x0002;
+        private const ushort VK_CONTROL = 0x11;
+        private const int WHEEL_DELTA = 120;
 
         private const int WH_MOUSE_LL = 14;
         private const int WM_MOUSEMOVE = 0x0200;
@@ -36,6 +41,13 @@ namespace TouchpadGood
         private const double BOTTOM_HSCROLL_UNITS_PER_WIDTH = 2000.0;
         private const double BOTTOM_HSCROLL_INTERVAL_MS = 14.0;
         private const int BOTTOM_HSCROLL_MIN_EMIT = 6;
+
+        // Right/Bottom scroll-edge 2-finger pinch-to-zoom
+        private const double EDGE_PINCH_RIGHT_MID_X = 0.78;
+        private const double EDGE_PINCH_BOTTOM_MID_Y = 0.76;
+        private const double EDGE_PINCH_TRIGGER_DIST = 0.014;
+        private const double EDGE_PINCH_STEP_DIST = 0.042;
+        private const double EDGE_PINCH_MIN_INTERVAL_MS = 32.0;
 
         private static readonly IntPtr ExtraInfoPtr = new IntPtr(unchecked((int)RawInputTouchpad.SYNTHETIC_EXTRA_INFO_TAG));
         private static readonly double TicksToMs = 1000.0 / Stopwatch.Frequency;
@@ -65,7 +77,14 @@ namespace TouchpadGood
         private struct INPUT
         {
             public uint type;
-            public MOUSEINPUT mi;
+            public INPUTUNION u;
+        }
+
+        [StructLayout(LayoutKind.Explicit)]
+        private struct INPUTUNION
+        {
+            [FieldOffset(0)] public MOUSEINPUT mi;
+            [FieldOffset(0)] public KEYBDINPUT ki;
         }
 
         [StructLayout(LayoutKind.Sequential)]
@@ -74,6 +93,16 @@ namespace TouchpadGood
             public int dx;
             public int dy;
             public uint mouseData;
+            public uint dwFlags;
+            public uint time;
+            public IntPtr dwExtraInfo;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct KEYBDINPUT
+        {
+            public ushort wVk;
+            public ushort wScan;
             public uint dwFlags;
             public uint time;
             public IntPtr dwExtraInfo;
@@ -148,6 +177,9 @@ namespace TouchpadGood
 
         [DllImport("user32.dll")]
         private static extern bool SetCursorPos(int X, int Y);
+
+        [DllImport("user32.dll")]
+        private static extern short GetAsyncKeyState(int vKey);
 
         private struct PrevContact
         {
@@ -233,6 +265,15 @@ namespace TouchpadGood
         private double _bottomHScrollAccum;
         private double _lastHScrollEmitMs;
         private POINT _bottomAnchorPt;
+
+        // Right/Bottom edge scroll-zone 2-finger pinch-to-zoom state
+        private bool _edgePinchCandidate;
+        private bool _edgePinchActive;
+        private double _pinchStartDist;
+        private double _pinchPrevDist;
+        private double _pinchStartMidX, _pinchStartMidY;
+        private double _pinchAccum;
+        private double _lastPinchEmitMs;
 
         public GestureEngine(DriverConfig config, Action<int> scheduleTimerMs)
         {
@@ -332,8 +373,13 @@ namespace TouchpadGood
             _config = config;
             if (!_config.Enabled)
                 ForceReleaseAll();
-            else if (!_config.EnableBottomEdgeHScroll)
-                CancelBottomEdgeScroll();
+            else
+            {
+                if (!_config.EnableBottomEdgeHScroll)
+                    CancelBottomEdgeScroll();
+                if (!_config.EnableEdgePinchZoom)
+                    CancelEdgePinch();
+            }
         }
 
         private IntPtr OnLowLevelMouseHook(int nCode, IntPtr wParam, IntPtr lParam)
@@ -374,7 +420,40 @@ namespace TouchpadGood
             _bottomScrollActive = false;
             _bottomHScrollAccum = 0;
             _lastHScrollEmitMs = 0;
-            SetTempMouseSuppression(false);
+            if (!_edgePinchActive)
+                SetTempMouseSuppression(false);
+        }
+
+        private void CancelEdgePinch()
+        {
+            _edgePinchCandidate = false;
+            _edgePinchActive = false;
+            _pinchAccum = 0;
+            _lastPinchEmitMs = 0;
+            if (!_bottomScrollActive)
+                SetTempMouseSuppression(false);
+        }
+
+        private static bool IsInScrollEdgeZone(TouchContact a, TouchContact b, int maxX, int maxY)
+        {
+            double invX = 1.0 / Math.Max(1.0, maxX);
+            double invY = 1.0 / Math.Max(1.0, maxY);
+            double ax = a.X * invX, ay = a.Y * invY;
+            double bx = b.X * invX, by = b.Y * invY;
+            double midX = (ax + bx) * 0.5;
+            double midY = (ay + by) * 0.5;
+            bool rightZone = (midX >= EDGE_PINCH_RIGHT_MID_X) && (ax >= 0.85 || bx >= 0.85);
+            bool bottomZone = (midY >= EDGE_PINCH_BOTTOM_MID_Y) && (ay >= 0.80 || by >= 0.80);
+            return rightZone || bottomZone;
+        }
+
+        private static double CalcPinchDistance(TouchContact a, TouchContact b, int maxX, int maxY, int physMaxX, int physMaxY)
+        {
+            double dx = (double)(b.X - a.X) / Math.Max(1.0, maxX);
+            double dy = (double)(b.Y - a.Y) / Math.Max(1.0, maxY);
+            double aspect = (physMaxX > 0 && physMaxY > 0) ? ((double)physMaxY / physMaxX) : 0.62;
+            dy *= aspect;
+            return Math.Sqrt(dx * dx + dy * dy);
         }
 
         public void ForceReleaseAll()
@@ -387,7 +466,7 @@ namespace TouchpadGood
 
         public void OnNativeMouseMove(int dx, int dy, double now)
         {
-            if (!_config.Enabled || _bottomScrollActive) return;
+            if (!_config.Enabled || _bottomScrollActive || _edgePinchActive) return;
 
             if (_bridgingOne)
             {
@@ -433,7 +512,7 @@ namespace TouchpadGood
             ProcessPendingButtonUps(now);
 
             if (_config.Enabled && _pendingResolve && _activeDrag == DragAction.None &&
-                !_cooldownUntilLift && !_suppressedByPhysBtn && _prevCount >= 2)
+                !_cooldownUntilLift && !_suppressedByPhysBtn && !_edgePinchCandidate && !_edgePinchActive && _prevCount >= 2)
             {
                 TryResolvePending(now, _prevCount);
             }
@@ -464,6 +543,7 @@ namespace TouchpadGood
                     _pendingResolve = false;
                     _bridgingOne = false;
                     CancelBottomEdgeScroll();
+                    CancelEdgePinch();
                     EndAllDrags(now);
                 }
                 StorePrevContacts(frame.Contacts, count);
@@ -596,8 +676,10 @@ namespace TouchpadGood
                 }
                 else if (oldCount >= 2)
                 {
+                    bool wasEdgePinch = _edgePinchActive;
                     CancelBottomEdgeScroll();
-                    if (!_suppressedByPhysBtn && !_cooldownUntilLift &&
+                    CancelEdgePinch();
+                    if (!wasEdgePinch && !_suppressedByPhysBtn && !_cooldownUntilLift &&
                         _activeDrag == DragAction.None && !_rightDragLatched && !_pressedButtonInSession)
                     {
                         TryFireTap(now);
@@ -731,8 +813,21 @@ namespace TouchpadGood
 
                 if (count == 2)
                 {
+                    CancelEdgePinch();
+                    if (_config.EnableEdgePinchZoom && IsInScrollEdgeZone(frame.Contacts[0], frame.Contacts[1], maxX, maxY))
+                    {
+                        _edgePinchCandidate = true;
+                        _enteredFromMovingOne = false;
+                        _pinchStartDist = CalcPinchDistance(frame.Contacts[0], frame.Contacts[1], maxX, maxY, frame.PhysMaxX, frame.PhysMaxY);
+                        _pinchPrevDist = _pinchStartDist;
+                        _pinchStartMidX = (frame.Contacts[0].X + frame.Contacts[1].X) * 0.5 / Math.Max(1.0, maxX);
+                        _pinchStartMidY = (frame.Contacts[0].Y + frame.Contacts[1].Y) * 0.5 / Math.Max(1.0, maxY);
+                        _pinchAccum = 0;
+                        _lastPinchEmitMs = 0;
+                        GetCursorPos(out _bottomAnchorPt);
+                    }
                     _branch = _enteredFromMovingOne ? Branch.OnePlusOne : Branch.Fresh2;
-                    _pendingResolve = (_config.TwoFingerDrag != DragAction.None);
+                    _pendingResolve = !_edgePinchCandidate && (_config.TwoFingerDrag != DragAction.None);
                 }
                 else if (count == 3)
                 {
@@ -759,6 +854,17 @@ namespace TouchpadGood
             // --- MULTI-FINGER COUNT CHANGE (oldCount >= 2 && count != oldCount) ---
             if (count != oldCount)
             {
+                if (_edgePinchActive)
+                {
+                    CancelEdgePinch();
+                    _cooldownUntilLift = true;
+                    _pendingResolve = false;
+                    RescheduleTimer(now);
+                    return;
+                }
+                if (_edgePinchCandidate)
+                    CancelEdgePinch();
+
                 _lastCountChangeMs = now;
 
                 // === FPS ADS + SHOOT MODE (Latched Right-Drag!) ===
@@ -909,6 +1015,58 @@ namespace TouchpadGood
             {
                 RescheduleTimer(now);
                 return;
+            }
+
+            // Right/Bottom edge scroll-zone 2-finger pinch-to-zoom
+            if (count == 2 && (_edgePinchCandidate || _edgePinchActive))
+            {
+                TouchContact c0 = frame.Contacts[0];
+                TouchContact c1 = frame.Contacts[1];
+                double curDist = CalcPinchDistance(c0, c1, maxX, maxY, frame.PhysMaxX, frame.PhysMaxY);
+                double aspect = (frame.PhysMaxX > 0 && frame.PhysMaxY > 0) ? ((double)frame.PhysMaxY / frame.PhysMaxX) : 0.62;
+
+                if (!_edgePinchActive)
+                {
+                    double distDelta = Math.Abs(curDist - _pinchStartDist);
+                    double curMidX = (c0.X + c1.X) * 0.5 / Math.Max(1.0, maxX);
+                    double curMidY = (c0.Y + c1.Y) * 0.5 / Math.Max(1.0, maxY);
+                    double mdx = curMidX - _pinchStartMidX;
+                    double mdy = (curMidY - _pinchStartMidY) * aspect;
+                    double midDisp = Math.Sqrt(mdx * mdx + mdy * mdy);
+
+                    if (distDelta >= EDGE_PINCH_TRIGGER_DIST && distDelta >= midDisp * 0.65)
+                    {
+                        _edgePinchActive = true;
+                        _pendingResolve = false;
+                        _pressedButtonInSession = true;
+                        SetTempMouseSuppression(true);
+                        EmitPinchZoomDelta(curDist - _pinchStartDist, now);
+                        _pinchPrevDist = curDist;
+                        RescheduleTimer(now);
+                        return;
+                    }
+                    else if (midDisp >= 0.018 && midDisp > distDelta * 1.8)
+                    {
+                        // User is dragging both fingers in parallel, not pinching -> hand off to normal 2F drag!
+                        _edgePinchCandidate = false;
+                        _pendingResolve = (_config.TwoFingerDrag != DragAction.None);
+                    }
+                    else
+                    {
+                        _pinchPrevDist = curDist;
+                        RescheduleTimer(now);
+                        return;
+                    }
+                }
+                else
+                {
+                    double dDist = curDist - _pinchPrevDist;
+                    _pinchPrevDist = curDist;
+                    if (Math.Abs(dDist) < 0.30)
+                        EmitPinchZoomDelta(dDist, now);
+                    RescheduleTimer(now);
+                    return;
+                }
             }
 
             double dx, dy;
@@ -1363,6 +1521,62 @@ namespace TouchpadGood
             _bridgeRemX = 0;
             _bridgeRemY = 0;
             CancelBottomEdgeScroll();
+            CancelEdgePinch();
+        }
+
+        private void EmitPinchZoomDelta(double dDist, double now)
+        {
+            _pinchAccum += dDist;
+            if (_lastPinchEmitMs == 0 || (now - _lastPinchEmitMs) >= EDGE_PINCH_MIN_INTERVAL_MS)
+            {
+                if (Math.Abs(_pinchAccum) >= EDGE_PINCH_STEP_DIST)
+                {
+                    int sign = _pinchAccum > 0 ? 1 : -1;
+                    _pinchAccum -= sign * EDGE_PINCH_STEP_DIST;
+                    // Clamp leftover accumulator so rapid bursts never overshoot after fingers stop
+                    if (Math.Abs(_pinchAccum) > EDGE_PINCH_STEP_DIST * 1.5)
+                        _pinchAccum = sign * EDGE_PINCH_STEP_DIST * 0.5;
+                    _lastPinchEmitMs = now;
+                    SendPinchZoom(sign * WHEEL_DELTA);
+                }
+            }
+        }
+
+        private void SendPinchZoom(int wheelDelta)
+        {
+            bool ctrlAlreadyDown = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
+            if (ctrlAlreadyDown)
+            {
+                INPUT inp = new INPUT();
+                inp.type = INPUT_MOUSE;
+                inp.u.mi.mouseData = unchecked((uint)wheelDelta);
+                inp.u.mi.dwFlags = MOUSEEVENTF_WHEEL;
+                inp.u.mi.dwExtraInfo = ExtraInfoPtr;
+                SendInput(1, &inp, InputSize);
+                return;
+            }
+
+            // Atomic Ctrl Down + Wheel + Ctrl Up in one SendInput batch (Ctrl can NEVER stick!)
+            INPUT* batch = stackalloc INPUT[3];
+            batch[0] = new INPUT();
+            batch[0].type = INPUT_KEYBOARD;
+            batch[0].u.ki.wVk = VK_CONTROL;
+            batch[0].u.ki.dwFlags = 0;
+            batch[0].u.ki.dwExtraInfo = ExtraInfoPtr;
+
+            batch[1] = new INPUT();
+            batch[1].type = INPUT_MOUSE;
+            batch[1].u.mi.mouseData = unchecked((uint)wheelDelta);
+            batch[1].u.mi.dwFlags = MOUSEEVENTF_WHEEL;
+            batch[1].u.mi.dwExtraInfo = ExtraInfoPtr;
+
+            batch[2] = new INPUT();
+            batch[2].type = INPUT_KEYBOARD;
+            batch[2].u.ki.wVk = VK_CONTROL;
+            batch[2].u.ki.dwFlags = KEYEVENTF_KEYUP;
+            batch[2].u.ki.dwExtraInfo = ExtraInfoPtr;
+
+            SendInput(3, batch, InputSize);
         }
 
         private void EmitBottomHScrollDelta(double ndx, double now)
@@ -1383,42 +1597,33 @@ namespace TouchpadGood
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void SendHWheel(int delta)
         {
-            INPUT inp;
+            INPUT inp = new INPUT();
             inp.type = INPUT_MOUSE;
-            inp.mi.dx = 0;
-            inp.mi.dy = 0;
-            inp.mi.mouseData = unchecked((uint)delta);
-            inp.mi.dwFlags = MOUSEEVENTF_HWHEEL;
-            inp.mi.time = 0;
-            inp.mi.dwExtraInfo = ExtraInfoPtr;
+            inp.u.mi.mouseData = unchecked((uint)delta);
+            inp.u.mi.dwFlags = MOUSEEVENTF_HWHEEL;
+            inp.u.mi.dwExtraInfo = ExtraInfoPtr;
             SendInput(1, &inp, InputSize);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void SendFlag(uint flag)
         {
-            INPUT inp;
+            INPUT inp = new INPUT();
             inp.type = INPUT_MOUSE;
-            inp.mi.dx = 0;
-            inp.mi.dy = 0;
-            inp.mi.mouseData = 0;
-            inp.mi.dwFlags = flag;
-            inp.mi.time = 0;
-            inp.mi.dwExtraInfo = ExtraInfoPtr;
+            inp.u.mi.dwFlags = flag;
+            inp.u.mi.dwExtraInfo = ExtraInfoPtr;
             SendInput(1, &inp, InputSize);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void SendMove(int dx, int dy)
         {
-            INPUT inp;
+            INPUT inp = new INPUT();
             inp.type = INPUT_MOUSE;
-            inp.mi.dx = dx;
-            inp.mi.dy = dy;
-            inp.mi.mouseData = 0;
-            inp.mi.dwFlags = MOUSEEVENTF_MOVE;
-            inp.mi.time = 0;
-            inp.mi.dwExtraInfo = ExtraInfoPtr;
+            inp.u.mi.dx = dx;
+            inp.u.mi.dy = dy;
+            inp.u.mi.dwFlags = MOUSEEVENTF_MOVE;
+            inp.u.mi.dwExtraInfo = ExtraInfoPtr;
             SendInput(1, &inp, InputSize);
         }
 

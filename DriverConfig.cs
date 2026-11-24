@@ -39,7 +39,8 @@ namespace TouchpadGood
         public ClickAction OnePlusTwoTap = ClickAction.RightClick;
 
         // Gaming ergonomics & edge scroll
-        public bool EnableBottomEdgeHScroll = true; // Bottom 14% strip horizontal scroll (on-demand zero-permanent-hook)
+        public bool EnableBottomEdgeHScroll = true; // Bottom 18% strip horizontal scroll (on-demand zero-permanent-hook)
+        public bool EnableEdgePinchZoom = true;     // Right/Bottom edge scroll-zone 2-finger pinch-to-zoom
         public bool EnableFpsAdsLatch = true;       // 3F RightDrag->2F+3rd Left / 2F LeftDrag+3rd Right
         public bool LockPointerToAimFinger = true;  // 1+1/1+2 = original finger; Fresh 2F/3F = index finger (left-bottom)
 
@@ -107,6 +108,7 @@ namespace TouchpadGood
                         cfg.OnePlusTwoTap = ClampClick(ReadInt(key, "OnePlusTwoTap", (int)ClickAction.RightClick));
 
                         cfg.EnableBottomEdgeHScroll = ReadInt(key, "EnableBottomEdgeHScroll", 1) != 0;
+                        cfg.EnableEdgePinchZoom = ReadInt(key, "EnableEdgePinchZoom", 1) != 0;
                         cfg.EnableFpsAdsLatch = ReadInt(key, "EnableFpsAdsLatch", 1) != 0;
                         cfg.LockPointerToAimFinger = ReadInt(key, "LockPointerToAimFinger", 1) != 0;
 
@@ -142,6 +144,7 @@ namespace TouchpadGood
                     key.SetValue("OnePlusTwoTap", (int)OnePlusTwoTap, RegistryValueKind.DWord);
 
                     key.SetValue("EnableBottomEdgeHScroll", EnableBottomEdgeHScroll ? 1 : 0, RegistryValueKind.DWord);
+                    key.SetValue("EnableEdgePinchZoom", EnableEdgePinchZoom ? 1 : 0, RegistryValueKind.DWord);
                     key.SetValue("EnableFpsAdsLatch", EnableFpsAdsLatch ? 1 : 0, RegistryValueKind.DWord);
                     key.SetValue("LockPointerToAimFinger", LockPointerToAimFinger ? 1 : 0, RegistryValueKind.DWord);
 
