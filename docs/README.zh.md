@@ -1,6 +1,6 @@
 # TouchpadGood
 
-[English](README.md) | [한국어](README.ko.md) | [日本語](README.ja.md) | **中文 (简体)** | [Español](README.es.md) | [Deutsch](README.de.md) | [Français](README.fr.md)
+[English](../README.md) | [한국어](README.ko.md) | [日本語](README.ja.md) | **中文 (简体)** | [Español](README.es.md) | [Deutsch](README.de.md) | [Français](README.fr.md)
 
 **面向 Windows 11 的超低延迟游戏与效率精密触控板自定义驱动**
 纯 Win32 无托盘后台守护程序 (`TouchpadGood.exe`) + Windows 11 Fluent Design 设置界面 (`TouchpadGoodSettings.exe`) + 一体化安装程序 (`TouchpadGoodSetup.exe`)
@@ -71,4 +71,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1
 
 ## 开源许可
 
-MIT License — 详见 [LICENSE](LICENSE)。
+MIT License — 详见 [LICENSE](../LICENSE)。

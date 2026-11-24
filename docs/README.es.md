@@ -1,6 +1,6 @@
 # TouchpadGood
 
-[English](README.md) | [한국어](README.ko.md) | [日本語](README.ja.md) | [中文 (简体)](README.zh.md) | **Español** | [Deutsch](README.de.md) | [Français](README.fr.md)
+[English](../README.md) | [한국어](README.ko.md) | [日本語](README.ja.md) | [中文 (简体)](README.zh.md) | **Español** | [Deutsch](README.de.md) | [Français](README.fr.md)
 
 **Controlador de panel táctil de precisión (Precision Touchpad) con latencia ultrabaja para gaming y productividad en Windows 11.**
 Servicio Win32 puro en segundo plano (`TouchpadGood.exe`) + Configuración Fluent Design (`TouchpadGoodSettings.exe`) + Instalador todo en uno (`TouchpadGoodSetup.exe`).
@@ -67,4 +67,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1
 
 ## Licencia
 
-Licencia MIT — consulta [LICENSE](LICENSE).
+Licencia MIT — consulta [LICENSE](../LICENSE).

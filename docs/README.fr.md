@@ -1,6 +1,6 @@
 # TouchpadGood
 
-[English](README.md) | [한국어](README.ko.md) | [日本語](README.ja.md) | [中文 (简体)](README.zh.md) | [Español](README.es.md) | [Deutsch](README.de.md) | **Français**
+[English](../README.md) | [한국어](README.ko.md) | [日本語](README.ja.md) | [中文 (简体)](README.zh.md) | [Español](README.es.md) | [Deutsch](README.de.md) | **Français**
 
 **Pilote Precision Touchpad ultra-faible latence pour le gaming et la productivité sous Windows 11.**
 Service Win32 pur en arrière-plan (`TouchpadGood.exe`) + Paramètres Fluent Design (`TouchpadGoodSettings.exe`) + Installateur tout-en-un (`TouchpadGoodSetup.exe`).
@@ -67,4 +67,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1
 
 ## Licence
 
-Licence MIT — voir [LICENSE](LICENSE).
+Licence MIT — voir [LICENSE](../LICENSE).

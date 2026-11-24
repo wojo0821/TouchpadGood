@@ -1,6 +1,6 @@
 # TouchpadGood
 
-[English](README.md) | [한국어](README.ko.md) | [日本語](README.ja.md) | [中文 (简体)](README.zh.md) | [Español](README.es.md) | **Deutsch** | [Français](README.fr.md)
+[English](../README.md) | [한국어](README.ko.md) | [日本語](README.ja.md) | [中文 (简体)](README.zh.md) | [Español](README.es.md) | **Deutsch** | [Français](README.fr.md)
 
 **Ultra-Low-Latency Gaming- & Produktivitäts-Precision-Touchpad-Treiber für Windows 11.**
 Reiner Win32-Hintergrunddienst (`TouchpadGood.exe`) + Windows 11 Fluent Design Einstellungen (`TouchpadGoodSettings.exe`) + All-in-One Installer (`TouchpadGoodSetup.exe`).
@@ -67,4 +67,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1
 
 ## Lizenz
 
-MIT-Lizenz — siehe [LICENSE](LICENSE).
+MIT-Lizenz — siehe [LICENSE](../LICENSE).

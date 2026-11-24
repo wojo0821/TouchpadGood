@@ -1,6 +1,6 @@
 # TouchpadGood
 
-[English](README.md) | **한국어** | [日本語](README.ja.md) | [中文 (简体)](README.zh.md) | [Español](README.es.md) | [Deutsch](README.de.md) | [Français](README.fr.md)
+[English](../README.md) | **한국어** | [日本語](README.ja.md) | [中文 (简体)](README.zh.md) | [Español](README.es.md) | [Deutsch](README.de.md) | [Français](README.fr.md)
 
 **Windows 11 초저지연 게이밍 · 작업용 정밀 터치패드(Precision Touchpad) 커스텀 드라이버**
 순수 Win32 무트레이 백그라운드 드라이버(`TouchpadGood.exe`) + Windows 11 Fluent Design 설정 앱(`TouchpadGoodSettings.exe`) + 통합 설치 프로그램(`TouchpadGoodSetup.exe`)
@@ -80,4 +80,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1
 
 ## 라이선스
 
-MIT License — [LICENSE](LICENSE) 참고.
+MIT License — [LICENSE](../LICENSE) 참고.

@@ -1,6 +1,6 @@
 # TouchpadGood
 
-[English](README.md) | [한국어](README.ko.md) | **日本語** | [中文 (简体)](README.zh.md) | [Español](README.es.md) | [Deutsch](README.de.md) | [Français](README.fr.md)
+[English](../README.md) | [한국어](README.ko.md) | **日本語** | [中文 (简体)](README.zh.md) | [Español](README.es.md) | [Deutsch](README.de.md) | [Français](README.fr.md)
 
 **Windows 11向け 超低遅延ゲーミング＆作業用 高精度タッチパッドカスタムドライバー**
 純粋Win32常駐デーモン (`TouchpadGood.exe`) + Windows 11 Fluent Design 設定UI (`TouchpadGoodSettings.exe`) + オールインワンインストーラー (`TouchpadGoodSetup.exe`)
@@ -71,4 +71,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1
 
 ## ライセンス
 
-MIT License — 詳細は [LICENSE](LICENSE) をご覧ください。
+MIT License — 詳細は [LICENSE](../LICENSE) をご覧ください。

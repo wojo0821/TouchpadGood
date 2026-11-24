@@ -1,6 +1,6 @@
 # TouchpadGood
 
-**English** | [한국어](README.ko.md) | [日本語](README.ja.md) | [中文 (简体)](README.zh.md) | [Español](README.es.md) | [Deutsch](README.de.md) | [Français](README.fr.md)
+**English** | [한국어](docs/README.ko.md) | [日本語](docs/README.ja.md) | [中文 (简体)](docs/README.zh.md) | [Español](docs/README.es.md) | [Deutsch](docs/README.de.md) | [Français](docs/README.fr.md)
 
 **Ultra-low-latency gaming & productivity Precision Touchpad driver for Windows 11.**
 Pure Win32 headless daemon (`TouchpadGood.exe`) + Windows 11 Fluent Design Settings UI (`TouchpadGoodSettings.exe`) + All-in-One Installer (`TouchpadGoodSetup.exe`).
