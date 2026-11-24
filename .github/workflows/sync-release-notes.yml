@@ -1,0 +1,54 @@
+name: Sync Release Notes
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'docs/CHANGELOG.md'
+      - '.github/workflows/sync-release-notes.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Update all GitHub Releases from docs/CHANGELOG.md
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $changelog = Get-Content -Raw -Encoding UTF8 "docs/CHANGELOG.md"
+          $releases = gh release list --limit 30 --json tagName | ConvertFrom-Json
+
+          foreach ($rel in $releases) {
+            $tag = $rel.tagName
+            $pattern = "(?ms)^##\s+" + [regex]::Escape($tag) + "\r?\n(.*?)(?=^##\s+v|\z)"
+            $m = [regex]::Match($changelog, $pattern)
+            if (-not $m.Success) {
+              Write-Host "Skipping $tag (not in docs/CHANGELOG.md)"
+              continue
+            }
+
+            $body = $m.Groups[1].Value.Trim().TrimEnd('-').Trim()
+            $notes = @"
+          $body
+
+          ---
+          ### Download
+          - **`TouchpadGoodSetup.exe`** — All-in-One Installer / Updater / Uninstaller (Recommended)
+          - **`TouchpadGood.exe`** — Standalone headless background driver
+          - **`TouchpadGoodSettings.exe`** — Standalone Fluent Design Settings UI
+          "@
+
+            $tmp = "/tmp/notes_$tag.md"
+            [System.IO.File]::WriteAllText($tmp, $notes, (New-Object System.Text.UTF8Encoding($false)))
+            Write-Host "Updating release notes for $tag..."
+            gh release edit $tag --notes-file $tmp
+          }
