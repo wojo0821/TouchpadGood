@@ -549,6 +549,12 @@ namespace TouchpadGood
                 {
                     ulong seenMask = 0;
                     int activeCount = 0;
+                    int tipCount = 0;
+                    for (int i = 0; i < cache.PendingCount; i++)
+                    {
+                        if (cache.Pending[i].TipSwitch) tipCount++;
+                    }
+                    int bottomStripY = (cache.MaxY > 0) ? (int)(cache.MaxY * 0.80) : int.MaxValue;
 
                     for (int i = 0; i < cache.PendingCount; i++)
                     {
@@ -559,12 +565,14 @@ namespace TouchpadGood
                         if (tc.TipSwitch)
                         {
                             seenMask |= bit;
-                            if (!tc.Confidence)
+                            // Allow 1-finger touches along the very bottom bezel even if PTP firmware clears Confidence
+                            bool inBottomEdge = (tipCount == 1 && tc.Y >= bottomStripY);
+                            if (!tc.Confidence && !inBottomEdge)
                             {
                                 cache.RejectedMask |= bit;
                                 continue;
                             }
-                            if ((cache.RejectedMask & bit) != 0)
+                            if ((cache.RejectedMask & bit) != 0 && !inBottomEdge)
                                 continue;
 
                             if (activeCount < _activeBuf.Length)

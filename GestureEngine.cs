@@ -24,14 +24,13 @@ namespace TouchpadGood
 
         private const int WH_MOUSE_LL = 14;
         private const int WM_MOUSEMOVE = 0x0200;
-        private const uint LLMHF_INJECTED = 0x00000001;
 
-        private const double BOTTOM_EDGE_Y_START = 0.86;
-        private const double BOTTOM_EDGE_Y_CANCEL = 0.76;
+        private const double BOTTOM_EDGE_Y_START = 0.82;
+        private const double BOTTOM_EDGE_Y_CANCEL = 0.72;
         private const double BOTTOM_EDGE_X_MAX = 0.88;
-        private const double BOTTOM_HSCROLL_TRIGGER_X = 0.007;
-        private const double BOTTOM_HSCROLL_UNITS_PER_WIDTH = 1680.0;
-        private const int BOTTOM_HSCROLL_STEP = 30;
+        private const double BOTTOM_HSCROLL_TRIGGER_X = 0.0045;
+        private const double BOTTOM_HSCROLL_UNITS_PER_WIDTH = 2200.0;
+        private const int BOTTOM_HSCROLL_MIN_EMIT = 4;
 
         private static readonly IntPtr ExtraInfoPtr = new IntPtr(unchecked((int)RawInputTouchpad.SYNTHETIC_EXTRA_INFO_TAG));
         private static readonly double TicksToMs = 1000.0 / Stopwatch.Frequency;
@@ -190,6 +189,7 @@ namespace TouchpadGood
         private bool _bottomScrollActive;
         private double _bottomStartX, _bottomStartY;
         private double _bottomHScrollAccum;
+        private double _bottomSmoothDx;
         private POINT _bottomAnchorPt;
 
         public GestureEngine(DriverConfig config, Action<int> scheduleTimerMs)
@@ -236,7 +236,9 @@ namespace TouchpadGood
             if (nCode >= 0 && _bottomScrollActive && wParam.ToInt32() == WM_MOUSEMOVE)
             {
                 MSLLHOOKSTRUCT* ms = (MSLLHOOKSTRUCT*)lParam;
-                if ((ms->flags & LLMHF_INJECTED) == 0)
+                // NOTE: Windows Precision Touchpad cursor moves carry LLMHF_INJECTED!
+                // Only allow our own tagged synthetic events through; block all PTP cursor movement cleanly.
+                if (ms->dwExtraInfo != ExtraInfoPtr)
                     return new IntPtr(1);
             }
             return CallNextHookEx(_mouseHook, nCode, wParam, lParam);
@@ -267,6 +269,7 @@ namespace TouchpadGood
             _bottomScrollCandidate = false;
             _bottomScrollActive = false;
             _bottomHScrollAccum = 0;
+            _bottomSmoothDx = 0;
             SetTempMouseSuppression(false);
         }
 
@@ -280,7 +283,13 @@ namespace TouchpadGood
 
         public void OnNativeMouseMove(int dx, int dy, double now)
         {
-            if (!_config.Enabled || _bottomScrollActive) return;
+            if (!_config.Enabled) return;
+            if (_bottomScrollActive)
+            {
+                // Safety fallback if foreground window is elevated while driver runs as standard user
+                SetCursorPos(_bottomAnchorPt.X, _bottomAnchorPt.Y);
+                return;
+            }
 
             if (_bridgingOne)
             {
@@ -1260,11 +1269,11 @@ namespace TouchpadGood
 
         private void EmitBottomHScrollDelta(double ndx)
         {
-            _bottomHScrollAccum += ndx * BOTTOM_HSCROLL_UNITS_PER_WIDTH;
-            int steps = (int)(_bottomHScrollAccum / BOTTOM_HSCROLL_STEP);
-            if (steps != 0)
+            _bottomSmoothDx = (_bottomSmoothDx == 0.0) ? ndx : (_bottomSmoothDx * 0.35 + ndx * 0.65);
+            _bottomHScrollAccum += _bottomSmoothDx * BOTTOM_HSCROLL_UNITS_PER_WIDTH;
+            int wheelDelta = (int)Math.Truncate(_bottomHScrollAccum);
+            if (Math.Abs(wheelDelta) >= BOTTOM_HSCROLL_MIN_EMIT)
             {
-                int wheelDelta = steps * BOTTOM_HSCROLL_STEP;
                 _bottomHScrollAccum -= wheelDelta;
                 SendHWheel(wheelDelta);
             }
