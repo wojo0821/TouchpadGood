@@ -1,0 +1,53 @@
+name: Publish Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build TouchpadGood Suite
+        shell: pwsh
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1
+
+      - name: Create or update GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          if (-not $tag -or -not $tag.StartsWith("v")) {
+            $tag = "v1.0.1"
+          }
+          $notes = @"
+          ## TouchpadGood $tag
+
+          Ultra-low-latency gaming & productivity Precision Touchpad driver for Windows 11.
+
+          ### Highlights
+          - Pure Win32 headless driver (`TouchpadGood.exe`, ~55 KB, 0 hooks, 0% idle CPU, MMCSS Games)
+          - Windows 11 Fluent Design Settings UI (`TouchpadGoodSettings.exe`) with 7 languages, custom Fluent scrollbar & borderless dropdowns
+          - One-click **Auto-configure Windows settings** button (accel OFF, zero typing delay, native right-edge scroll, 1-finger tap)
+          - Built-in GitHub **Check for Updates & 1-click Auto-Update**
+          - All-in-One Installer & Uninstaller (`TouchpadGoodSetup.exe`)
+
+          ### Download
+          Download **`TouchpadGoodSetup.exe`** below and run it to install or update TouchpadGood.
+          "@
+          gh release delete $tag --yes 2>$null
+          gh release create $tag `
+            TouchpadGoodSetup.exe `
+            TouchpadGood.exe `
+            TouchpadGoodSettings.exe `
+            --title "TouchpadGood $tag" `
+            --notes $notes
