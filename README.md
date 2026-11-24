@@ -56,7 +56,7 @@ Pure Win32 headless daemon (`TouchpadGood.exe`) + Windows 11 Fluent Design Setti
 ## Installation
 
 ### Option 1: All-in-One Installer (Recommended)
-1. Download **`TouchpadGoodSetup.exe`** from [Releases](../../releases).
+1. Download **[TouchpadGoodSetup.exe](https://github.com/wojo0821/TouchpadGood/raw/main/TouchpadGoodSetup.exe)** (all-in-one standalone installer, ~232 KB).
 2. Run `TouchpadGoodSetup.exe` and click **Install**.
    - Installs to `%LOCALAPPDATA%\Programs\TouchpadGood`.
    - Optionally auto-configures Windows 11 Precision Touchpad settings, registers elevated Task Scheduler auto-start (no UAC prompt at logon), and creates Start Menu / Desktop shortcuts.

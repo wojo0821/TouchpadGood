@@ -1,5 +1,6 @@
-# Compiled binaries (attach TouchpadGoodSetup.exe to GitHub Releases)
+# Compiled binaries (keep TouchpadGoodSetup.exe all-in-one installer tracked)
 *.exe
+!TouchpadGoodSetup.exe
 *.pdb
 *.dll
 *.lnk
