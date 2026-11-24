@@ -38,9 +38,10 @@ namespace TouchpadGood
         public ClickAction ThreeFingerTap = ClickAction.MiddleClick;
         public ClickAction OnePlusTwoTap = ClickAction.RightClick;
 
-        // Gaming ergonomics
-        public bool EnableFpsAdsLatch = true;      // 3F RightDrag->2F+3rd Left / 2F LeftDrag+3rd Right
-        public bool LockPointerToAimFinger = true; // 1+1/1+2 = original finger; Fresh 2F/3F = index finger (left-bottom)
+        // Gaming ergonomics & edge scroll
+        public bool EnableBottomEdgeHScroll = true; // Bottom 14% strip horizontal scroll (on-demand zero-permanent-hook)
+        public bool EnableFpsAdsLatch = true;       // 3F RightDrag->2F+3rd Left / 2F LeftDrag+3rd Right
+        public bool LockPointerToAimFinger = true;  // 1+1/1+2 = original finger; Fresh 2F/3F = index finger (left-bottom)
 
         // Speed & Timing
         public bool AutoMatchDragSpeed = true;
@@ -105,6 +106,7 @@ namespace TouchpadGood
                         cfg.ThreeFingerTap = ClampClick(ReadInt(key, "ThreeFingerTap", (int)ClickAction.MiddleClick));
                         cfg.OnePlusTwoTap = ClampClick(ReadInt(key, "OnePlusTwoTap", (int)ClickAction.RightClick));
 
+                        cfg.EnableBottomEdgeHScroll = ReadInt(key, "EnableBottomEdgeHScroll", 1) != 0;
                         cfg.EnableFpsAdsLatch = ReadInt(key, "EnableFpsAdsLatch", 1) != 0;
                         cfg.LockPointerToAimFinger = ReadInt(key, "LockPointerToAimFinger", 1) != 0;
 
@@ -139,6 +141,7 @@ namespace TouchpadGood
                     key.SetValue("ThreeFingerTap", (int)ThreeFingerTap, RegistryValueKind.DWord);
                     key.SetValue("OnePlusTwoTap", (int)OnePlusTwoTap, RegistryValueKind.DWord);
 
+                    key.SetValue("EnableBottomEdgeHScroll", EnableBottomEdgeHScroll ? 1 : 0, RegistryValueKind.DWord);
                     key.SetValue("EnableFpsAdsLatch", EnableFpsAdsLatch ? 1 : 0, RegistryValueKind.DWord);
                     key.SetValue("LockPointerToAimFinger", LockPointerToAimFinger ? 1 : 0, RegistryValueKind.DWord);
 

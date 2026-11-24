@@ -35,10 +35,10 @@ jobs:
           Ultra-low-latency gaming & productivity Precision Touchpad driver for Windows 11.
 
           ### Highlights
-          - Pure Win32 headless driver (`TouchpadGood.exe`, ~55 KB, 0 hooks, 0% idle CPU, MMCSS Games)
+          - Pure Win32 headless driver (`TouchpadGood.exe`, ~58 KB, 0 idle hooks, 0% idle CPU, MMCSS Games)
+          - Smooth **Bottom-Edge Horizontal Scroll** (on-demand zero-permanent-hook `WM_MOUSEHWHEEL`) + native Windows 11 right-edge vertical scroll
           - Windows 11 Fluent Design Settings UI (`TouchpadGoodSettings.exe`) with 7 languages, custom Fluent scrollbar & borderless dropdowns
-          - One-click **Auto-configure Windows settings** button (accel OFF, zero typing delay, native right-edge scroll, 1-finger tap)
-          - Built-in GitHub **Check for Updates & 1-click Auto-Update**
+          - One-click **Auto-configure Windows settings** & built-in GitHub **Check for Updates / 1-click Auto-Update**
           - All-in-One Installer & Uninstaller (`TouchpadGoodSetup.exe`)
 
           ### Download

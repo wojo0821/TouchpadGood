@@ -37,6 +37,7 @@ Reiner Win32-Hintergrunddienst (`TouchpadGood.exe`) + Windows 11 Fluent Design E
 | :--- | :--- |
 | **1 Finger Bewegen / Tippen** | Windows-nativ (1:1 linear, Beschleunigung AUS) |
 | **Randscrollen rechts (1 Finger)** | Windows 11 nativ (`SingleFingerPanMode = 2`) |
+| **Randscrollen unten (1 Finger)** | Flüssiges horizontales Scrollen (`WM_MOUSEHWHEEL`, 0 Idle-Hooks) |
 | **2 Finger Ziehen** | Links ziehen |
 | **2 Finger Tippen (`0 → 2`)** | Rechtsklick |
 | **1 Finger Bewegung + 1 Tipp (`1 → 2`)** | Linksklick (Halten = Links ziehen) |

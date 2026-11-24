@@ -40,6 +40,7 @@ Pure Win32 headless daemon (`TouchpadGood.exe`) + Windows 11 Fluent Design Setti
 | :--- | :--- |
 | **1 Finger Move / Tap** | Native Windows (1:1 linear, accel OFF) |
 | **Right-Edge 1-Finger Scroll** | Native Windows 11 (`SingleFingerPanMode = 2`) |
+| **Bottom-Edge 1-Finger Swipe** | Smooth Horizontal Scroll (`WM_MOUSEHWHEEL`, 0 idle hooks) |
 | **2 Fingers Drag** | Left Click Drag |
 | **2 Fingers Tap (`0 → 2`)** | Right Click |
 | **Moving 1 Finger + 1 Finger Tap (`1 → 2`)** | Left Click (or hold = Left Drag) |

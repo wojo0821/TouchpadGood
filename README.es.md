@@ -37,6 +37,7 @@ Servicio Win32 puro en segundo plano (`TouchpadGood.exe`) + Configuración Fluen
 | :--- | :--- |
 | **1 dedo mover / tocar** | Nativo de Windows (1:1 lineal, aceleración OFF) |
 | **Desplazamiento borde derecho (1 dedo)** | Nativo de Windows 11 (`SingleFingerPanMode = 2`) |
+| **Desplazamiento borde inferior (1 dedo)** | Desplazamiento horizontal suave (`WM_MOUSEHWHEEL`, 0 hooks en reposo) |
 | **Arrastrar con 2 dedos** | Arrastre izquierdo |
 | **Toque con 2 dedos (`0 → 2`)** | Clic derecho |
 | **Moviendo 1 dedo + 1 toque (`1 → 2`)** | Clic izquierdo (mantener = arrastre izq.) |

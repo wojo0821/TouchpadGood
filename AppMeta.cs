@@ -7,15 +7,15 @@ using System.Reflection;
 [assembly: AssemblyProduct("TouchpadGood")]
 [assembly: AssemblyCompany("TouchpadGood")]
 [assembly: AssemblyCopyright("Copyright (c) 2026 wojo0821")]
-[assembly: AssemblyVersion("1.0.1.0")]
-[assembly: AssemblyFileVersion("1.0.1.0")]
+[assembly: AssemblyVersion("1.0.2.0")]
+[assembly: AssemblyFileVersion("1.0.2.0")]
 
 namespace TouchpadGood
 {
     internal static class AppMeta
     {
         public const string AppName = "TouchpadGood";
-        public const string Version = "1.0.1";
+        public const string Version = "1.0.2";
         public const string GitHubOwner = "wojo0821";
         public const string GitHubRepo = "TouchpadGood";
         public const string ReleasesApiUrl = "https://api.github.com/repos/" + GitHubOwner + "/" + GitHubRepo + "/releases/latest";
